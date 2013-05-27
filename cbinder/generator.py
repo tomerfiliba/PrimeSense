@@ -113,11 +113,13 @@ class CType(object):
         "short" : "c_short", "signed short" : "c_short", "int16" : "c_short", "int16_t" : "c_short", "__int16" : "c_short",
         "unsigned short" : "c_ushort", "ushort" : "c_ushort", "ushort_t" : "c_ushort", "uint16" : "c_ushort",
         "uint16_t" : "c_ushort", "unsigned __int16" : "c_ushort",
+        "short int" : "c_short",
         # 32
         "int" : "c_int", "signed int" : "c_int", "int32" : "c_int", "int32_t" : "c_int", "__int32" : "c_int",
         "unsigned int" : "c_uint", "uint" : "c_uint", "uint_t" : "c_uint", "uint32" : "c_uint", 
         "uint32_t" : "c_uint", "unsigned __int32" : "c_uint", "long" : "c_long", "signed long" : "c_long", 
         "unsigned long" : "c_ulong", "ulong" : "c_ulong", "ulong_t" : "c_ulong",
+        "long int" : "c_long",
         # 64
         "long long" : "c_longlong", "signed long long" : "c_longlong", "int64" : "c_longlong", "int64_t" : "c_longlong",
         "__int64" : "c_longlong", "unsigned long long" : "c_ulonglong", "ulonglong" : "c_ulonglong", 
@@ -207,6 +209,7 @@ class CtypesGenVisitor(c_ast.NodeVisitor):
                 subscripts = [self.eval_const(node.dim)]
             return self.type_to_ctype(node.type, quals, indir_levels, subscripts)
         else:
+            print node.show()
             raise TypeError(node)
     
     def visit_Decl(self, node):
@@ -286,7 +289,7 @@ class CtypesGenVisitor(c_ast.NodeVisitor):
 
 
 class CBindings(object):
-    def __init__(self, hfile, includes = [], predefs = {}, prelude = []):
+    def __init__(self, hfile, includes = [], predefs = {}, prelude = [], debug = False):
         self.hfile = hfile
         self.types = OrderedDict()
         self.funcs = OrderedDict()
@@ -296,6 +299,9 @@ class CBindings(object):
         lines = self._load_with_includes(hfile, includes)
         lines[0:0] = prelude
         text = self._preprocess(lines)
+        if debug:
+            with open("tmp.c", "w") as f:
+                f.write(text)
         
         parser = CParser()
         ast = parser.parse(text, hfile)
@@ -307,6 +313,7 @@ class CBindings(object):
         path = os.path.dirname(os.path.abspath(rootfile))
         lines = strip_comments(open(rootfile, "rU").read()).splitlines() + ['']
         i = -1
+        included = set()
         while i + 1 < len(lines):
             i += 1
             line = lines[i]
@@ -316,8 +323,9 @@ class CBindings(object):
             del lines[i]
             i -= 1
             filename = m.group(1)
-            if filename not in includes:
+            if filename not in includes or filename in included:
                 continue
+            included.add(filename)
             lines2 = strip_comments(open(os.path.join(path, filename), "rU").read()).splitlines() + ['']
             lines[i+1:i+1] = lines2
         return [l.strip() for l in lines if l.strip()]
@@ -353,7 +361,7 @@ class CBindings(object):
             lines2.append(line)
         return "\n".join(lines2)
     
-    def export(self, filename, decorate = None):
+    def export(self, filename):
         m = PythonModule()
         m.comment("Auto-generated file; do not edit directly", time.ctime())
         m.sep()
@@ -367,15 +375,15 @@ class CBindings(object):
             identifiers = [tok for tok in delimiters.split(value) if identifier_pattern.match(tok)]
             if any(tok not in generated_macros for tok in identifiers):
                 continue
-            m.stmt("{0} = {1}", name, value)
+            self.emit_macro(m, name, args, value)
             generated_macros.add(name)
         m.sep()
         for t in self.types.values():
-            t.to_ctypes(m)
+            self.emit_type(m, t)
         m.sep()
         m.stmt("_dll = UnloadedDLL")
         for f in self.funcs.values():
-            m.stmt("_{0} = UnloadedDLL", f.name)
+            self.emit_func_unloaded(m, f)
         m.sep()
         with m.def_("load_dll", "dllname"):
             m.stmt("global _dll")
@@ -384,25 +392,43 @@ class CBindings(object):
             m.stmt("_dll = ctypes.CDLL(dllname)")
             m.sep()
             for f in self.funcs.values():
-                m.stmt("global _{0}", f.name)
-                m.stmt("_{0} = _dll.{0}", f.name)
-                restype = f.type.get_ctype()
-                if restype == "void":
-                    restype = None
-                m.stmt("_{0}.restype  = {1}", f.name, restype)
-                m.stmt("_{0}.argtypes = [{1}]", f.name, ", ".join(arg.get_ctype() for name, arg in f.args))
+                self.emit_func_prototype(m, f)
                 m.sep()
-
+        
+        self.before_funcs_hook(m)
         for f in self.funcs.values():
-            if decorate:
-                decorate(m, f)
-            with m.def_(f.name, *(n for n, _ in f.args)):
-                textargs = ", ".join("%s" % (arg.as_pretty_type(name),) for name, arg in f.args)
-                m.stmt("'''{0}({1})'''", f.type.as_pretty_type(f.name), textargs)
-                m.return_("_{0}({1})", f.name, ", ".join(n for n, _ in f.args))
+            self.emit_func(m, f)
         
         m.dump(filename)
         return m
+    
+    def emit_macro(self, m, name, args, value):
+        m.stmt("{0} = {1}", name, value)
+    
+    def emit_type(self, m, tp):
+        tp.to_ctypes(m)
+    
+    def emit_func_prototype(self, m, func):
+        m.stmt("global _{0}", func.name)
+        m.stmt("_{0} = _dll.{0}", func.name)
+        restype = func.type.get_ctype()
+        if restype == "void":
+            restype = None
+        m.stmt("_{0}.restype  = {1}", func.name, restype)
+        m.stmt("_{0}.argtypes = [{1}]", func.name, ", ".join(arg.get_ctype() for _, arg in func.args))
+    
+    def emit_func_unloaded(self, m, func):
+        m.stmt("_{0} = UnloadedDLL", func.name)
+    
+    def before_funcs_hook(self, m):
+        pass
+    
+    def emit_func(self, m, func):
+        with m.def_(func.name, *(n for n, _ in func.args)):
+            textargs = ", ".join("%s" % (arg.as_pretty_type(name),) for name, arg in func.args)
+            m.stmt("'''{0}({1})'''", func.type.as_pretty_type(func.name), textargs)
+            m.return_("_{0}({1})", func.name, ", ".join(n for n, _ in func.args))
+
 
 
 

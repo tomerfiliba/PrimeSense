@@ -1,7 +1,8 @@
 import os
 import ctypes
-import _openni2 as oni
 import weakref
+from primelib import _openni2 as oni
+from primelib.utils import inherit_properties, HandleObject, _py_to_ctype_obj, ClosedHandle
 
 
 def initialize(dll_directory = "."):
@@ -38,44 +39,6 @@ def wait_for_any_stream(streams, timeout = None):
     else:
         return None
 
-class ClosedHandleError(Exception):
-    pass
-class ClosedHandle(object):
-    def __getattr__(self, name):
-        raise ClosedHandleError("Invalid handle")
-    def __bool__(self):
-        return False
-    __nonzero__ = __bool__
-ClosedHandle = ClosedHandle()
-
-class HandleObject(object):
-    __slots__ = ["_handle"]
-    def __init__(self, handle):
-        self._handle = handle
-    def __del__(self):
-        self.close()
-    def __enter__(self):
-        return self
-    def __exit__(self, t, v, tb):
-        self.close()
-    def close(self):
-        if hasattr(self, "_handle") and self._handle:
-            self._close()
-            self._handle = ClosedHandle
-    def _close(self):
-        raise NotImplementedError()
-
-def _py_to_ctype_obj(obj):
-    size = None
-    if isinstance(obj, (int, bool)):
-        obj = ctypes.c_int(obj)
-    elif isinstance(obj, float):
-        obj = ctypes.c_float(obj)
-    elif isinstance(obj, str):
-        obj = ctypes.create_string_buffer(obj)
-        size = len(obj)
-    return obj, size
-
 VideoMode = oni.OniVideoMode
 DeviceInfo = oni.OniDeviceInfo
 
@@ -85,8 +48,16 @@ class SensorInfo(object):
         self.videoModes = [info.pSupportedVideoModes[i] for i in range(info.numSupportedVideoModes)]
     @classmethod
     def from_stream_handle(cls, handle):
-        return cls(oni.oniStreamGetSensorInfo(handle)[0])
-
+        pinfo = oni.oniStreamGetSensorInfo(handle)
+        if pinfo == 0:
+            return None
+        return cls(pinfo[0])
+    @classmethod
+    def from_device_handle(cls, handle, sensor_type):
+        pinfo = oni.oniDeviceGetSensorInfo(handle, sensor_type)
+        if pinfo == 0:
+            return None
+        return cls(pinfo[0])
 
 class PlaybackSupport(object):
     __slots__ = ["device"]
@@ -110,7 +81,6 @@ class PlaybackSupport(object):
     def get_number_of_frames(self, stream):
         return stream.get_number_of_frames()
 
-
 class Device(HandleObject):
     def __init__(self, uri):
         self.uri = uri
@@ -122,6 +92,7 @@ class Device(HandleObject):
             self.playback = PlaybackSupport(self)
         else:
             self.playback = None
+        self._sensor_infos = {}
 
     def _close(self):
         oni.oniDeviceClose(self._handle)
@@ -134,56 +105,16 @@ class Device(HandleObject):
         return self._devinfo
     device_info = property(get_device_info)
 
-    def has_sensor(self, sensor_type):
-        '''int i;
-        for (i = 0; (i < ONI_MAX_SENSORS) && (m_aSensorInfo[i].m_pInfo != NULL); ++i)
-        {
-            if (m_aSensorInfo[i].getSensorType() == sensorType)
-            {
-                return true;
-            }
-        }
-
-        if (i == ONI_MAX_SENSORS)
-        {
-            return false;
-        }
-
-        const OniSensorInfo* pInfo = oniDeviceGetSensorInfo(m_device, (OniSensorType)sensorType);
-
-        if (pInfo == NULL)
-        {
-            return false;
-        }
-
-        m_aSensorInfo[i]._setInternal(pInfo);
-
-        return true;'''
-
     def get_sensor_info(self, sensor_type):
-        '''int i;
-        for (i = 0; (i < ONI_MAX_SENSORS) && (m_aSensorInfo[i].m_pInfo != NULL); ++i)
-        {
-            if (m_aSensorInfo[i].getSensorType() == sensorType)
-            {
-                return &m_aSensorInfo[i];
-            }
-        }
-
-        // not found. check to see we have additional space
-        if (i == ONI_MAX_SENSORS)
-        {
-            return NULL;
-        }
-
-        const OniSensorInfo* pInfo = oniDeviceGetSensorInfo(m_device, (OniSensorType)sensorType);
-        if (pInfo == NULL)
-        {
-            return NULL;
-        }
-
-        m_aSensorInfo[i]._setInternal(pInfo);
-        return &m_aSensorInfo[i];'''
+        if sensor_type in self._sensor_infos:
+            return self._sensor_infos[sensor_type]
+        
+        info = SensorInfo.from_device_handle(self._handle, sensor_type)
+        self._sensor_infos[sensor_type] = info
+        return info
+    
+    def has_sensor(self, sensor_type):
+        return self.get_sensor_info(sensor_type) is not None
 
     def get_property(self, property_id, rettype):
         ret = rettype()
@@ -223,6 +154,7 @@ class Device(HandleObject):
             oni.oniDeviceDisableDepthColorSync(self._handle)
 
 
+@inherit_properties(oni.OniFrame, "_frame")
 class VideoFrame(HandleObject):
     def __init__(self, pframe):
         self._frame = pframe[0]
@@ -230,9 +162,6 @@ class VideoFrame(HandleObject):
     def _close(self):
         oni.oniFrameRelease(self._handle)
         self._frame = ClosedHandle
-    
-    for name, _ in oni.OniFrame._fields_:
-        locals()[name] = property(lambda self, name = name: getattr(self._frame, name))
     
     def get_buffer(self):
         return (ctypes.c_uint8 * self.dataSize).from_address(self.data.value)
@@ -413,7 +342,7 @@ class DeviceListener(object):
         pass
     def on_disconnected(self, devinfo):
         pass
-    def on_state_changed(self):
+    def on_state_changed(self, devinfo, state):
         pass
     
     def _register(self):
