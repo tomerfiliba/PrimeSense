@@ -2,6 +2,7 @@
 
 # C extensions
 *.so
+*.pdb
 
 # Packages
 *.egg
@@ -33,3 +34,5 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+tmp/
