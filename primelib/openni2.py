@@ -2,18 +2,52 @@ import os
 import ctypes
 import weakref
 from primelib import _openni2 as oni
-from primelib.utils import inherit_properties, HandleObject, _py_to_ctype_obj, ClosedHandle
+from primelib.utils import inherit_properties, HandleObject, _py_to_ctype_obj, ClosedHandle, InitializationError
 
 
-def initialize(dll_directory = "."):
+_default_dll_directories = [".", "c:\\program files\\openni2\\redist", 
+    "c:\\program files (x86)\\openni2\\redist"]
+
+_openni2_initialized = False
+def initialize(dll_directories = _default_dll_directories):
+    global _openni2_initialized
+    if _openni2_initialized:
+        raise InitializationError("OpenNI2 already initialized")
+    if isinstance(dll_directories, str):
+        dll_directories = [dll_directories]
+    
+    found = False
     prev = os.getcwd()
-    os.chdir(dll_directory)
-    oni.load_dll("OpenNI2")
-    oni.oniInitialize(oni.ONI_API_VERSION)
+    exceptions = []
+    
+    for dlldir in dll_directories:
+        if not os.path.isdir(dlldir):
+            exceptions.append((dlldir, "Directory does not exist"))
+            continue
+        try:
+            os.chdir(dlldir)
+            oni.load_dll("OpenNI2")
+            oni.oniInitialize(oni.ONI_API_VERSION)
+        except Exception as ex:
+            exceptions.append((dlldir, ex))
+        else:
+            found = True
+            break
     os.chdir(prev)
+    if not found:
+        raise InitializationError("OpenNI2 could not be loaded:\n    %s" % 
+            ("\n    ".join("%s: %s" % (dir, ex) for dir, ex in exceptions)),)
+
+    _openni2_initialized = True
+
+
+def is_initialized():
+    return _openni2_initialized
 
 def unload():
+    global _openni2_initialized
     oni.oniShutdown()
+    _openni2_initialized = False
 
 def get_version():
     return oni.oniGetVersion()

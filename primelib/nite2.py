@@ -1,18 +1,51 @@
 import os
 import ctypes
 from primelib import _nite2, openni2
-from primelib.utils import inherit_properties, ClosedHandle, HandleObject
+from primelib.utils import inherit_properties, ClosedHandle, HandleObject, InitializationError
 
 
-def initialize(dll_directory = "."):
+_default_dll_directories = [".", "c:\\program files\\prime sense\\nite2\\redist", 
+    "c:\\program files (x86)\\prime sense\\nite2\\redist"]
+
+_nite2_initialized = False
+def initialize(dll_directories = _default_dll_directories):
+    global _nite2_initialized
+    if _nite2_initialized:
+        raise InitializationError("NiTE2 already initialized")
+    if isinstance(dll_directories, str):
+        dll_directories = [dll_directories]
+    
+    found = False
     prev = os.getcwd()
-    os.chdir(dll_directory)
-    _nite2.load_dll("NiTE2")
-    _nite2.niteInitialize()
+    exceptions = []
+    
+    for dlldir in dll_directories:
+        if not os.path.isdir(dlldir):
+            exceptions.append((dlldir, "Directory does not exist"))
+            continue
+        try:
+            os.chdir(dlldir)
+            _nite2.load_dll("NiTE2")
+            _nite2.niteInitialize()
+        except Exception as ex:
+            exceptions.append((dlldir, ex))
+        else:
+            found = True
+            break
     os.chdir(prev)
+    if not found:
+        raise InitializationError("NiTE2 could not be loaded:\n    %s" % 
+            ("\n    ".join("%s: %s" % (dir, ex) for dir, ex in exceptions)),)
+
+    _nite2_initialized = True
+
+def is_initialized():
+    return _nite2_initialized
 
 def unload():
+    global _nite2_initialized
     _nite2.niteShutdown()
+    _nite2_initialized = False
 
 def get_version():
     return _nite2.niteGetVersion()
@@ -55,7 +88,7 @@ class UserData(object):
         return (self.state & _nite2.NiteUserState.NITE_USER_STATE_NEW) != 0
     def is_visible(self):
         return (self.state & _nite2.NiteUserState.NITE_USER_STATE_VISIBLE) != 0;
-    def isLost(self):
+    def is_lost(self):
         return (self.state & _nite2.NiteUserState.NITE_USER_STATE_LOST) != 0;
     def get_pose(self, posetype):
         return PoseData(self.poses[posetype])
@@ -111,34 +144,54 @@ class UserTracker(HandleObject):
         return factor.value
     skeleton_smoothing_factor = property(get_skeleton_smoothing_factor, set_skeleton_smoothing_factor)
 
-    def startSkeletonTracking(self, userid):
+    def start_skeleton_tracking(self, userid):
         _nite2.niteStartSkeletonTracking(self._handle, userid)
-    def stopSkeletonTracking(self, userid):
+    def stop_skeleton_tracking(self, userid):
         _nite2.niteStopSkeletonTracking(self._handle, userid)
 
-    def startPoseDetection(self, userid, posetype):
+    def start_pose_detection(self, userid, posetype):
         _nite2.niteStartPoseDetection(self._handle, userid, posetype)
-    def stopPoseDetection(self, userid, posetype):
+    def stop_pose_detection(self, userid, posetype):
         _nite2.niteStopPoseDetection(self._handle, userid, posetype)
 
-    def addListener(self, pListener):
-        # XXX!!!
-        _nite2.niteRegisterUserTrackerCallbacks(self._handle, pListener.getCallbacks(), pListener)
-    def removeListener(self, pListener):
-        # XXX!!!
-        _nite2.niteUnregisterUserTrackerCallbacks(self._handle, pListener.getCallbacks())
+    def add_listener(self, listener):
+        listener._register(self)
+    def remove_listener(self, listener):
+        listener._unregister()
 
-    def convertJointCoordinatesToDepth(self,  x, y, z):
+    def convert_joint_coordinates_to_depth(self,  x, y, z):
         outX = ctypes.c_float()
         outY = ctypes.c_float()
         _nite2.niteConvertJointCoordinatesToDepth(self._handle, x, y, z, ctypes.byref(outX), ctypes.byref(outY))
         return (outX.value, outY.value)
     
-    def convertDepthCoordinatesToJoint(self, x, y, z):
+    def convert_depth_coordinates_to_joint(self, x, y, z):
         outX = ctypes.c_float()
         outY = ctypes.c_float()
         _nite2.niteConvertDepthCoordinatesToJoint(self._handle, x, y, z, ctypes.byref(outX), ctypes.byref(outY))
         return (outX.value, outY.value)
+
+class UserTrackerListener(object):
+    def __init__(self):
+        self._callbacks = _nite2.NiteUserTrackerCallbacks(readyForNextFrame = self._on_ready_for_next_frame)
+        self._pcallbacks = ctypes.pointer(self._callbacks)
+        self.user_tracker = None
+    
+    def _register(self, user_tracker):
+        if self.user_tracker is not None:
+            raise ValueError("Listener already registered")
+        self.user_tracker = user_tracker
+        _nite2.niteRegisterUserTrackerCallbacks(self.user_tracker._handle, self._pcallbacks, None)
+    def _unregister(self):
+        if self.user_tracker is None:
+            raise ValueError("Listener not registered")
+        _nite2.niteRegisterUserTrackerCallbacks(self.user_tracker._handle, self._pcallbacks)
+        self.user_tracker = None
+    
+    def _on_ready_for_next_frame(self, cookie):
+        self.on_ready_for_next_frame()
+    def on_ready_for_next_frame(self):
+        pass
 
 
 @inherit_properties(_nite2.NiteGestureData, "_gesture")
@@ -166,246 +219,118 @@ class HandData(object):
     def is_touching_fov(self):
         return (self.state & _nite2.NiteHandState.NITE_HAND_STATE_TOUCHING_FOV) != 0
 
+@inherit_properties(_nite2.NiteHandTrackerFrame, "_frame")
+class HandTrackerFrame(HandleObject):
+    def __init__(self, hand_tracker_handle, pframe):
+        self._hand_tracker_handle = hand_tracker_handle
+        self._frame = pframe[0]
+        HandleObject.__init__(self, pframe)
+        self._depth_frame = None
+        self._hands = None
+        self._gestures = None
+    
+    def _close(self):
+        _nite2.niteHandTrackerFrameRelease(self._hand_tracker_handle, self._handle)
 
+    @property
+    def depth_frame(self):
+        if self._depth_frame is None:
+            self._depth_frame = openni2.VideoFrame(self._frame.pDepthFrame)
+        return self._depth_frame
 
-'''
-/** Snapshot of the Hand Tracker algorithm. It holds all the hands identified at this time, as well as the detected gestures */
-class HandTrackerFrameRef
-{
-public:
-    HandTrackerFrameRef() : m_pFrame(NULL), m_handTracker(NULL)
-    {}
-    ~HandTrackerFrameRef()
-    {
-        release();
-    }
+    @property
+    def hands(self):
+        if self._hands is None:
+            self._hands = [self._frame.pHands[i] for i in range(self._frame.handCount)]
+        return self._hands
+    
+    @property
+    def gestures(self):
+        if self._gestures is None:
+            self._gestures = [self._frame.pGestures[i] for i in range(self._frame.gestureCount)]
+        return self._gestures
 
-    HandTrackerFrameRef(const HandTrackerFrameRef& other) : m_pFrame(NULL)
-    {
-        *this = other;
-    }
-    HandTrackerFrameRef& operator=(const HandTrackerFrameRef& other)
-    {
-        setReference(other.m_handTracker, other.m_pFrame);
-        niteHandTrackerFrameAddRef(m_handTracker, m_pFrame);
+class HandTracker(HandleObject):
+    def __init__(self, device = None):
+        self.device = device
+        handle = _nite2.NiteHandTrackerHandle()
+        if device is None:
+            _nite2.niteInitializeHandTracker(ctypes.byref(handle))
+        else:
+            _nite2.niteInitializeHandTrackerByDevice(device._handle, ctypes.byref(handle))
+        HandleObject.__init__(self, handle)
+    
+    def _close(self):
+        _nite2.niteShutdownHandTracker(self._handle)
 
-        return *this;
-    }
+    def read_frame(self):
+        pfrm = ctypes.POINTER(_nite2.NiteHandTrackerFrame)()
+        _nite2.niteReadHandTrackerFrame(self._handle, ctypes.byref(pfrm))
+        return HandTrackerFrame(self._handle, pfrm)
 
-    bool isValid() const
-    {
-        return m_pFrame != NULL;
-    }
+    def set_smoothing_factor(self, factor):
+        _nite2.niteSetHandSmoothingFactor(self._handle, factor)
+    def get_smoothing_factor(self):
+        factor = ctypes.c_float()
+        _nite2.niteGetHandSmoothingFactor(self._handle, ctypes.byref(factor))
+        return factor.value
+    smoothing_factor = property(get_smoothing_factor, set_smoothing_factor)
 
-    void release()
-    {
-        if (m_pFrame != NULL)
-        {
-            niteHandTrackerFrameRelease(m_handTracker, m_pFrame);
-        }
-        m_pFrame = NULL;
-        m_handTracker = NULL;
-    }
+    def start_hand_tracking(self, *position):
+        new_hand_id = HandId()
+        if len(position) == 3:
+            position = Point3f(*position)
+        _nite2.niteStartHandTracking(self._handle, ctypes.byref(position), ctypes.byref(new_hand_id))
+        return new_hand_id
+    def stop_hand_tracking(self, handid):
+        _nite2.niteStopHandTracking(self._handle, handid)
 
-    const Array<HandData>& getHands() const {return m_hands;}
-    const Array<GestureData>& getGestures() const {return m_gestures;}
+    def add_listener(self, listener):
+        # XXX!!!!
+        cbs = _nite2.NiteHandTrackerCallbacks()
+        _nite2.niteRegisterHandTrackerCallbacks(self._handle, listener.getCallbacks(), None)
+    def remove_listener(self, listener):
+        # XXX!!!!
+        _nite2.niteUnregisterHandTrackerCallbacks(self._handle, listener.getCallbacks())
 
-    openni::VideoFrameRef getDepthFrame() const
-    {
-        return m_depthFrame;
-    }
+    def start_gesture_detection(self, gesture_type):
+        _nite2.niteStartGestureDetection(self._handle, gesture_type)
+    def stop_gesture_detection(self, gesture_type):
+        _nite2.niteStopGestureDetection(self._handle, gesture_type)
 
-    uint64_t getTimestamp() const {return m_pFrame->timestamp;}
-    int getFrameIndex() const {return m_pFrame->frameIndex;}
-private:
-    friend class HandTracker;
+    def convertHandCoordinatesToDepth(self, x, y, z):
+        outX = ctypes.c_float()
+        outY = ctypes.c_float()
+        _nite2.niteConvertHandCoordinatesToDepth(self._handle, x, y, z, ctypes.byref(outX), ctypes.byref(outY))
+        return outX.value, outY.value
+    
+    def convertDepthCoordinatesToHand(self, x, y, z):
+        outX = ctypes.c_float()
+        outY = ctypes.c_float()
+        _nite2.niteConvertDepthCoordinatesToHand(self._handle, x, y, z, ctypes.byref(outX), ctypes.byref(outY))
+        return outX.value, outY.value
 
-    void setReference(NiteHandTrackerHandle handTracker, NiteHandTrackerFrame* pFrame)
-    {
-        release();
-        m_handTracker = handTracker;
-        m_pFrame = pFrame;
-        m_depthFrame._setFrame(pFrame->pDepthFrame);
-
-        m_hands.setData(m_pFrame->handCount, (HandData*)m_pFrame->pHands);
-        m_gestures.setData(m_pFrame->gestureCount, (GestureData*)m_pFrame->pGestures);
-    }
-
-    NiteHandTrackerFrame* m_pFrame;
-    NiteHandTrackerHandle m_handTracker;
-    openni::VideoFrameRef m_depthFrame;
-
-    Array<HandData> m_hands;
-    Array<GestureData> m_gestures;
-};
-
-/**
-This is the main object of the Hand Tracker algorithm.
-Through it all the hands and gestures are accessible.
-*/
-class HandTracker
-{
-public:
-    class Listener
-    {
-    public:
-        Listener() : m_pHandTracker(NULL)
-        {
-            m_handTrackerCallbacks.readyForNextFrame = newFrameCallback;
-        }
-        virtual void onNewFrame(HandTracker&) {}
-    private:
-        friend class HandTracker;
-        NiteHandTrackerCallbacks m_handTrackerCallbacks;
-        
-        NiteHandTrackerCallbacks& getCallbacks() {return m_handTrackerCallbacks;}
-
-        static void ONI_CALLBACK_TYPE newFrameCallback(void* pCookie)
-        {
-            Listener* pListener = (Listener*)pCookie;
-            pListener->onNewFrame(*pListener->m_pHandTracker);
-        }
-
-        void setHandTracker(HandTracker* pHandTracker)
-        {
-            m_pHandTracker = pHandTracker;
-        }
-        HandTracker* m_pHandTracker;
-    };
-
-    HandTracker() : m_handTrackerHandle(NULL)
-    {}
-    ~HandTracker()
-    {
-        destroy();
-    }
-
-    Status create(openni::Device* pDevice = NULL)
-    {
-        if (pDevice == NULL)
-        {
-            return (Status)niteInitializeHandTracker(&m_handTrackerHandle);
-            // Pick a device
-        }
-        return (Status)niteInitializeHandTrackerByDevice(pDevice, &m_handTrackerHandle);
-    }
-
-    void destroy()
-    {
-        if (isValid())
-        {
-            niteShutdownHandTracker(m_handTrackerHandle);
-            m_handTrackerHandle = NULL;
-        }
-    }
-
-    /** Get the next snapshot of the algorithm */
-    Status readFrame(HandTrackerFrameRef* pFrame)
-    {
-        NiteHandTrackerFrame *pNiteFrame = NULL;
-        Status rc = (Status)niteReadHandTrackerFrame(m_handTrackerHandle, &pNiteFrame);
-        pFrame->setReference(m_handTrackerHandle, pNiteFrame);
-
-        return rc;
-    }
-
-    bool isValid() const
-    {
-        return m_handTrackerHandle != NULL;
-    }
-
-    /** Control the smoothing factor of the skeleton joints */
-    Status setSmoothingFactor(float factor)
-    {
-        return (Status)niteSetHandSmoothingFactor(m_handTrackerHandle, factor);
-    }
-    float getSmoothingFactor() const
-    {
-        float factor;
-        Status rc = (Status)niteGetHandSmoothingFactor(m_handTrackerHandle, &factor);
-        if (rc != STATUS_OK)
-        {
-            factor = 0;
-        }
-        return factor;
-    }
-
-    /**
-    Request a hand in a specific position, assuming there really is a hand there.
-    For instance, the position received from a gesture can be used.
-    */
-    Status startHandTracking(const Point3f& position, HandId* pNewHandId)
-    {
-        return (Status)niteStartHandTracking(m_handTrackerHandle, (const NitePoint3f*)&position, pNewHandId);
-    }
-    /** Inform the algorithm that a specific hand is no longer required */
-    void stopHandTracking(HandId id)
-    {
-        niteStopHandTracking(m_handTrackerHandle, id);
-    }
-
-    void addListener(Listener* pListener)
-    {
-        niteRegisterHandTrackerCallbacks(m_handTrackerHandle, &pListener->getCallbacks(), pListener);
-        pListener->setHandTracker(this);
-    }
-    void removeListener(Listener* pListener)
-    {
-        niteUnregisterHandTrackerCallbacks(m_handTrackerHandle, &pListener->getCallbacks());
-        pListener->setHandTracker(NULL);
-    }
-
-    /** Start detecting a specific gesture */
-    Status startGestureDetection(GestureType type)
-    {
-        return (Status)niteStartGestureDetection(m_handTrackerHandle, (NiteGestureType)type);
-    }
-    /** Stop detecting a specific gesture */
-    void stopGestureDetection(GestureType type)
-    {
-        niteStopGestureDetection(m_handTrackerHandle, (NiteGestureType)type);
-    }
-
-    /**
-    Hand position is provided in a different set of coordinates than the depth coordinates.
-    While the depth coordinates are projective, the hand and gestures are provided in real world coordinates, i.e. number of millimeters from the sensor.
-    This function enables conversion from the hand coordinates to the depth coordinates. This is useful, for instance, to match the hand to the depth.
-    */
-    Status convertHandCoordinatesToDepth(float x, float y, float z, float* pOutX, float* pOutY) const
-    {
-        return (Status)niteConvertHandCoordinatesToDepth(m_handTrackerHandle, x, y, z, pOutX, pOutY);
-    }
-    /**
-    Hand position is provided in a different set of coordinates than the depth coordinates.
-    While the depth coordinates are projective, the hand and gestures are provided in real world coordinates, i.e. number of millimeters from the sensor.
-    This function enables conversion from the depth coordinates to the hand coordinates. This is useful, for instance, to allow measurements.
-    */
-    Status convertDepthCoordinatesToHand(int x, int y, int z, float* pOutX, float* pOutY) const
-    {
-        return (Status)niteConvertDepthCoordinatesToHand(m_handTrackerHandle, x, y, z, pOutX, pOutY);
-    }
-
-private:
-    NiteHandTrackerHandle m_handTrackerHandle;
-};
-'''
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+class HandTrackerListener(object):
+    def __init__(self):
+        self._callbacks = _nite2.NiteHandTrackerCallbacks(readyForNextFrame = self._on_ready_for_next_frame)
+        self._pcallbacks = ctypes.pointer(self._callbacks)
+        self.hand_tracker = None
+    
+    def _register(self, hand_tracker):
+        if self.hand_tracker is not None:
+            raise ValueError("Listener already registered")
+        self.hand_tracker = hand_tracker
+        _nite2.niteRegisterHandTrackerCallbacks(self.hand_tracker._handle, self._pcallbacks, None)
+    def _unregister(self):
+        if self.hand_tracker is None:
+            raise ValueError("Listener not registered")
+        _nite2.niteRegisterHandTrackerCallbacks(self.hand_tracker._handle, self._pcallbacks)
+        self.hand_tracker = None
+    
+    def _on_ready_for_next_frame(self, cookie):
+        self.on_ready_for_next_frame()
+    def on_ready_for_next_frame(self):
+        pass
 
 
 

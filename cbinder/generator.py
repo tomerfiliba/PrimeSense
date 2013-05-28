@@ -1,10 +1,10 @@
 import os
 import re
 import itertools
+import time
 from pycparser import CParser, c_ast
 from srcgen.python import PythonModule
 from collections import OrderedDict
-import time
 
 
 include_pattern = re.compile(r'^\s*#\s*include\s*[<"](.+?)[">]\s*$', re.IGNORECASE)
@@ -46,16 +46,6 @@ class CStruct(object):
         self.members = members
     def get_ctype(self):
         return self.name
-    def to_ctypes(self, m):
-        with m.class_(self.name, ["ctypes.Structure"]):
-            with m.def_("__repr__", "self"):
-                m.return_("'{0}({1})' % ({2})", self.name, ", ".join("%s = %%r" % (n,) for n, _ in self.members), 
-                    ", ".join("self.%s" % (n,) for n, _ in self.members))
-        m.stmt("{0}._fields_ = [", self.name)
-        for name, type in self.members:         # @ReservedAssignment
-            m.stmt("    ({0!r}, {1}),", name, type.get_ctype())
-        m.stmt("]")
-        m.sep()
 
 @autorepr
 class CEnum(object):
@@ -64,16 +54,6 @@ class CEnum(object):
         self.members = members
     def get_ctype(self):
         return "ctypes.c_int"
-    def to_ctypes(self, m):
-        with m.class_(self.name, ["CEnum"]):
-            m.stmt("_names_ = {0!r}", dict(self.members))
-            m.stmt("_values_ = {0!r}", dict((v, k) for k, v in self.members))
-            for name, value in self.members:
-                m.stmt("{0} = {1}", name, value)
-        if self.name.startswith("_anon_"):
-            for k, _ in self.members:
-                m.stmt("{0} = {1}.{0}", k, self.name)
-        m.sep()
 
 @autorepr
 class CUnion(object):
@@ -82,12 +62,6 @@ class CUnion(object):
         self.members = members
     def get_ctype(self):
         return self.name
-    def to_ctypes(self, m):
-        with m.class_(self.name, ["ctypes.Union"]):
-            m.stmt("_fields_ = []")
-        for name, type in self.members:     # @ReservedAssignment
-            m.stmt("{0}._fields_.append(({1!r}, {2}))", self.name, name, type.get_ctype())
-        m.sep()
 
 @autorepr
 class CTypedef(object):
@@ -96,8 +70,6 @@ class CTypedef(object):
         self.type = type
     def get_ctype(self):
         return self.name
-    def to_ctypes(self, m):
-        m.stmt("{0} = {1}", self.name, self.type.get_ctype())
 
 @autorepr
 class CType(object):
@@ -132,6 +104,7 @@ class CType(object):
         self.indir_levels = indir_levels
         self.subscripts = subscripts
         self.quals = None
+    
     def get_ctype(self):
         if self.indir_levels == 1 and not self.quals:
             if self.name == "char":
@@ -370,20 +343,42 @@ class CBindings(object):
         m.sep()
         generated_macros = set()
         for name, (args, value) in self.macros.items():
-            if args or not value:
+            if not self.filter_macro(name, args, value):
                 continue
-            identifiers = [tok for tok in delimiters.split(value) if identifier_pattern.match(tok)]
-            if any(tok not in generated_macros for tok in identifiers):
-                continue
-            self.emit_macro(m, name, args, value)
-            generated_macros.add(name)
+            self.emit_macro(m, name, args, value, generated_macros)
         m.sep()
         for t in self.types.values():
-            self.emit_type(m, t)
+            if not self.filter_type(t):
+                continue
+            if isinstance(t, CEnum):
+                self.emit_enum(m, t)
+            elif isinstance(t, CStruct):
+                self.emit_struct_decl(m, t)
+            elif isinstance(t, CUnion):
+                self.emit_union_decl(m, t)
+            elif isinstance(t, CTypedef):
+                pass
+            else:
+                raise TypeError(t)
+        m.sep()
+        for t in self.types.values():
+            if not self.filter_type(t):
+                continue
+            if isinstance(t, CTypedef):
+                self.emit_typedef(m, t)
+        m.sep()
+        for t in self.types.values():
+            if not self.filter_type(t):
+                continue
+            if isinstance(t, CStruct):
+                self.emit_struct_fields(m, t)
+            elif isinstance(t, CUnion):
+                self.emit_union_fields(m, t)
         m.sep()
         m.stmt("_dll = UnloadedDLL")
         for f in self.funcs.values():
-            self.emit_func_unloaded(m, f)
+            if self.filter_func(f):
+                self.emit_func_unloaded(m, f)
         m.sep()
         with m.def_("load_dll", "dllname"):
             m.stmt("global _dll")
@@ -392,21 +387,121 @@ class CBindings(object):
             m.stmt("_dll = ctypes.CDLL(dllname)")
             m.sep()
             for f in self.funcs.values():
+                if not self.filter_func(f):
+                    continue
                 self.emit_func_prototype(m, f)
                 m.sep()
         
         self.before_funcs_hook(m)
         for f in self.funcs.values():
+            if not self.filter_func(f):
+                continue
             self.emit_func(m, f)
+
+        m.stmt("all_types = [")
+        for t in self.types.values():
+            if not self.filter_type(t):
+                continue
+            m.stmt("    {0},", t.name)
+        m.stmt("]")
+        m.sep()
+        m.stmt("all_funcs = [")
+        for f in self.funcs.values():
+            if not self.filter_func(f):
+                continue
+            m.stmt("    {0},", f.name)
+        m.stmt("]")
         
         m.dump(filename)
         return m
     
-    def emit_macro(self, m, name, args, value):
-        m.stmt("{0} = {1}", name, value)
+    def filter_macro(self, name, args, value):
+        return True
     
-    def emit_type(self, m, tp):
-        tp.to_ctypes(m)
+    def filter_type(self, tp):
+        return True
+    
+    def filter_func(self, func):
+        return True
+    
+    def emit_macro(self, m, name, args, value, generated_macros):
+        if not value:
+            return
+        tokens = delimiters.split(value)
+        identifiers = [tok for tok in tokens if identifier_pattern.match(tok)]
+        if any((tok not in generated_macros and tok not in args) for tok in identifiers):
+            return
+        python_tokens = []
+        while tokens:
+            t = tokens.pop(0)
+            if not t.strip():
+                continue
+            if t == "##":
+                if not tokens or not python_tokens:
+                    #print "unexpected end of tokens!"
+                    return
+                python_tokens[-1] = "str(%s)" % (python_tokens[-1],)
+                python_tokens.append("+ str(%s)" % (tokens.pop(0),))
+            elif t == "#":
+                if not tokens:
+                    #print "unexpected end of tokens!"
+                    return
+                python_tokens.append("str(%s)" % (tokens.pop(0),))
+            else:
+                python_tokens.append(t)
+        
+        code = " ".join(t.encode("unicode_escape") for t in python_tokens).strip()
+        if args:
+            code = "lambda %s: %s" % (", ".join(args), code)
+        try:
+            compile(code, "?", "eval")
+        except Exception:
+            return
+        
+        m.stmt("{0} = {1}", name, code)
+        generated_macros.add(name)
+    
+    def emit_struct_decl(self, m, tp):
+        with m.class_(tp.name, ["ctypes.Structure"]):
+            for name, type in tp.members:         # @ReservedAssignment
+                m.stmt("{0} = {1!r}", name, type.get_ctype())
+            m.sep()
+            with m.def_("__repr__", "self"):
+                m.return_("'{0}({1})' % ({2})", tp.name, ", ".join("%s = %%r" % (n,) for n, _ in tp.members), 
+                    ", ".join("self.%s" % (n,) for n, _ in tp.members))
+
+    def emit_struct_fields(self, m, tp):
+        m.stmt("{0}._fields_ = [", tp.name)
+        for name, type in tp.members:         # @ReservedAssignment
+            m.stmt("    ({0!r}, {1}),", name, type.get_ctype())
+        m.stmt("]")
+        m.sep()
+
+    def emit_union_decl(self, m, tp):
+        with m.class_(tp.name, ["ctypes.Union"]):
+            for name, type in tp.members:         # @ReservedAssignment
+                m.stmt("{0} = {1!r}", name, type.get_ctype())
+            m.sep()
+            with m.def_("__repr__", "self"):
+                m.return_("'{0}({1})' % ({2})", tp.name, ", ".join("%s = %%r" % (n,) for n, _ in tp.members), 
+                    ", ".join("self.%s" % (n,) for n, _ in tp.members))
+
+    def emit_union_fields(self, m, tp):
+        self.emit_struct_fields(m, tp)
+    
+    def emit_enum(self, m, tp):
+        with m.class_(tp.name, ["CEnum"]):
+            m.stmt("_names_ = {0!r}", dict(tp.members))
+            m.stmt("_values_ = {0!r}", dict((v, k) for k, v in tp.members))
+            for name, value in tp.members:
+                m.stmt("{0} = {1}", name, value)
+        if tp.name.startswith("_anon_"):
+            for k, _ in tp.members:
+                m.stmt("{0} = {1}.{0}", k, tp.name)
+        m.sep()
+    
+    def emit_typedef(self, m, tp):
+        m.stmt("{0} = {1}", tp.name, tp.type.get_ctype())
     
     def emit_func_prototype(self, m, func):
         m.stmt("global _{0}", func.name)

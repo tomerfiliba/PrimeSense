@@ -25,6 +25,7 @@ class TestBindings(unittest.TestCase):
         
         openni2.initialize("../res/redist")
         print openni2.get_version()
+        print "devices:", openni2.enumerate_devices()
         openni2.unload()
         
         nite2.initialize("../res/redist")

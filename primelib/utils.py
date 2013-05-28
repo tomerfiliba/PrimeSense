@@ -1,6 +1,9 @@
 import ctypes
 
 
+class InitializationError(Exception):
+    pass
+
 class OpenNIError(Exception):
     def __init__(self, code, message):
         Exception.__init__(self, code, message)
