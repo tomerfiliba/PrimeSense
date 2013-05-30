@@ -100,6 +100,7 @@ class UserTrackerFrame(HandleObject):
         self._frame = pframe[0]
         self._user_tracker_handle = user_tracker_handle
         self._depth_frame = None
+        _nite2.niteUserTrackerFrameAddRef(user_tracker_handle, pframe)
         HandleObject.__init__(self, pframe)
         self.users = []
         self.users_by_id = {}
@@ -185,7 +186,7 @@ class UserTrackerListener(object):
     def _unregister(self):
         if self.user_tracker is None:
             raise ValueError("Listener not registered")
-        _nite2.niteRegisterUserTrackerCallbacks(self.user_tracker._handle, self._pcallbacks)
+        _nite2.niteUnregisterUserTrackerCallbacks(self.user_tracker._handle, self._pcallbacks)
         self.user_tracker = None
     
     def _on_ready_for_next_frame(self, cookie):
@@ -224,6 +225,7 @@ class HandTrackerFrame(HandleObject):
     def __init__(self, hand_tracker_handle, pframe):
         self._hand_tracker_handle = hand_tracker_handle
         self._frame = pframe[0]
+        _nite2.niteHandTrackerFrameAddRef(hand_tracker_handle, pframe)
         HandleObject.__init__(self, pframe)
         self._depth_frame = None
         self._hands = None
@@ -286,12 +288,9 @@ class HandTracker(HandleObject):
         _nite2.niteStopHandTracking(self._handle, handid)
 
     def add_listener(self, listener):
-        # XXX!!!!
-        cbs = _nite2.NiteHandTrackerCallbacks()
-        _nite2.niteRegisterHandTrackerCallbacks(self._handle, listener.getCallbacks(), None)
+        listener._register(self)
     def remove_listener(self, listener):
-        # XXX!!!!
-        _nite2.niteUnregisterHandTrackerCallbacks(self._handle, listener.getCallbacks())
+        listener._unregister()
 
     def start_gesture_detection(self, gesture_type):
         _nite2.niteStartGestureDetection(self._handle, gesture_type)
@@ -324,7 +323,7 @@ class HandTrackerListener(object):
     def _unregister(self):
         if self.hand_tracker is None:
             raise ValueError("Listener not registered")
-        _nite2.niteRegisterHandTrackerCallbacks(self.hand_tracker._handle, self._pcallbacks)
+        _nite2.niteUnregisterHandTrackerCallbacks(self.hand_tracker._handle, self._pcallbacks)
         self.hand_tracker = None
     
     def _on_ready_for_next_frame(self, cookie):

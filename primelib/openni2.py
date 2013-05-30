@@ -192,6 +192,7 @@ class Device(HandleObject):
 class VideoFrame(HandleObject):
     def __init__(self, pframe):
         self._frame = pframe[0]
+        oni.oniFrameAddRef(pframe)
         HandleObject.__init__(self, pframe)
     def _close(self):
         oni.oniFrameRelease(self._handle)

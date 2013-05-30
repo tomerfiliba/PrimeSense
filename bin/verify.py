@@ -1,7 +1,9 @@
+import os
 import inspect
-from io import StringIO
 import tokenize
+from io import StringIO
 from primelib import _openni2, openni2, _nite2, nite2
+from cbinder.generator import delimiters
 
 
 def get_identifiers(source):
@@ -14,11 +16,16 @@ def get_unexposed_functions(wrapper_mod, autgen_mod):
         if func.__name__ not in identifiers:
             yield func.__name__
 
-def show_unexposed_functions(wrapper_mod, autgen_mod, to_ignore = []):
+def show_unexposed_functions(wrapper_mod, autgen_mod, hfile, to_ignore = []):
     first_time = True
+    hfile_tokens = set(delimiters.split(open(hfile, "r").read()))
     for func in get_unexposed_functions(wrapper_mod, autgen_mod):
         if func in to_ignore:
             continue
+        if func in hfile_tokens:
+            func += " <<<< FIX ME"
+        else:
+            func += " (not exposed in %s)" % (os.path.basename(hfile),)
         if first_time:
             print "%s\n======================" % (wrapper_mod.__name__,)
             first_time = False
@@ -27,8 +34,8 @@ def show_unexposed_functions(wrapper_mod, autgen_mod, to_ignore = []):
         print
 
 if __name__ == "__main__":
-    show_unexposed_functions(openni2, _openni2, ["oniGetExtendedError"])
-    show_unexposed_functions(nite2, _nite2)
+    show_unexposed_functions(openni2, _openni2, "../res/include/OpenNI.h", ["oniGetExtendedError"])
+    show_unexposed_functions(nite2, _nite2, "../res/include/NiTE.h")
 
 
 
