@@ -37,9 +37,10 @@ typedef int OniBool;
 #define ONI_MAX_STR 256
 #define ONI_MAX_SENSORS 10
 
-typedef void* OniCallbackHandle;
+struct OniCallbackHandleImpl;
+typedef struct OniCallbackHandleImpl* OniCallbackHandle;
 
-/** Holds an OpenNI version number, which consists of four separate numbers in the format: @c major.minor.maintenance.build. For example: 2.0.0.20. */
+/** Holds an OpenNI version number, which consists of four separate numbers in the format: @c major.minor.maintenance.build. For example: 2.0.0.20. */	\
 typedef struct
 {
 	/** Major version number, incremented for major API restructuring. */
@@ -81,9 +82,15 @@ typedef struct
 	uint16_t usbProductId;
 } OniDeviceInfo;
 
-typedef void* OniDeviceHandle;
-typedef void* OniStreamHandle;
-typedef void* OniRecorderHandle;
+struct _OniDevice;
+typedef struct _OniDevice* OniDeviceHandle;
+
+struct _OniStream;
+typedef struct _OniStream* OniStreamHandle;
+
+struct _OniRecorder;
+typedef struct _OniRecorder* OniRecorderHandle;
+
 
 /** All information of the current frame */
 typedef struct
@@ -111,6 +118,9 @@ typedef void (ONI_CALLBACK_TYPE* OniGeneralCallback)(void* pCookie);
 typedef void (ONI_CALLBACK_TYPE* OniDeviceInfoCallback)(const OniDeviceInfo* pInfo, void* pCookie);
 typedef void (ONI_CALLBACK_TYPE* OniDeviceStateCallback)(const OniDeviceInfo* pInfo, OniDeviceState deviceState, void* pCookie);
 
+typedef void* (ONI_CALLBACK_TYPE* OniFrameAllocBufferCallback)(int size, void* pCookie);
+typedef void (ONI_CALLBACK_TYPE* OniFrameFreeBufferCallback)(void* data, void* pCookie);
+
 typedef struct
 {
 	OniDeviceInfoCallback		deviceConnected;
@@ -134,9 +144,14 @@ Pixel type used to store depth images.
 typedef uint16_t OniDepthPixel;
 
 /**
-Pixel type used to store IR images.
+Pixel type used to store 16-bit grayscale images
 */
 typedef uint16_t OniGrayscale16Pixel;
+
+/**
+Pixel type used to store 8-bit grayscale/bayer images
+*/
+typedef uint8_t OniGrayscale8Pixel;
 
 #pragma pack (push, 1)
 

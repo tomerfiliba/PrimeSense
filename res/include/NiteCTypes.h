@@ -13,7 +13,9 @@
 
 typedef short int NiteUserId;
 
-typedef void* NiteUserTrackerHandle;
+struct _NiteUserTracker;
+typedef struct _NiteUserTracker* NiteUserTrackerHandle;
+
 
 #define NITE_JOINT_COUNT 15
 #define NITE_POSE_COUNT 2
@@ -185,6 +187,7 @@ typedef struct
 	int build;
 } NiteVersion;
 
-typedef void* NiteHandTrackerHandle;
+struct _NiteHandTracker;
+typedef struct _NiteHandTracker* NiteHandTrackerHandle;
 
 #endif // _NITE_C_TYPES_H_

@@ -1,16 +1,26 @@
 import ctypes
 
 
-class CEnum(ctypes.c_int):
+class CEnumMeta(type(ctypes.c_int)):
+    def __new__(cls, name, bases, namespace):
+        cls2 = type(ctypes.c_int).__new__(cls, name, bases, namespace)
+        if namespace.get("__module__") != __name__:
+            namespace["_values_"].clear()
+            for name in namespace["_names_"].keys():
+                if name.startswith("_"):
+                    continue
+                setattr(cls2, name, cls2(namespace[name]))
+                namespace["_names_"][name] = namespace[name]
+                namespace["_values_"][namespace[name]] = name
+        return cls2
+
+def with_meta(meta, base = object):
+    return meta("NewBase", (base,), {"__module__" : __name__})
+
+class CEnum(with_meta(CEnumMeta, ctypes.c_int)):
     _names_ = {}
     _values_ = {}
     __slots__ = []
-    class __metaclass__(type(ctypes.c_int)):
-        def __new__(cls, name, bases, namespace):
-            cls2 = type(ctypes.c_int).__new__(cls, name, bases, namespace)
-            for name, val in namespace["_names_"].items():
-                setattr(cls2, name, cls2(val))
-            return cls2
     
     def __repr__(self):
         name = self._values_.get(self.value)
@@ -44,7 +54,7 @@ class CEnum(ctypes.c_int):
         return int(self) < int(other)
     def __le__(self, other):
         return int(self) <= int(other)
-    def __hash__(self, other):
+    def __hash__(self):
         return hash(int(self))
 
 

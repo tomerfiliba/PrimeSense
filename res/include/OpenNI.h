@@ -624,6 +624,10 @@ public:
 		{
 		}
 
+		virtual ~NewFrameListener()
+		{
+		}
+
 		/**
 		Derived classes should implement this function to handle new frames.
 		*/
@@ -643,12 +647,44 @@ public:
 		OniCallbackHandle m_callbackHandle;
 	};
 
+	class FrameAllocator
+	{
+	public:
+		virtual ~FrameAllocator() {}
+		virtual void* allocateFrameBuffer(int size) = 0;
+		virtual void freeFrameBuffer(void* data) = 0;
+
+	private:
+		friend class VideoStream;
+
+		static void* ONI_CALLBACK_TYPE allocateFrameBufferCallback(int size, void* pCookie)
+		{
+			FrameAllocator* pThis = (FrameAllocator*)pCookie;
+			return pThis->allocateFrameBuffer(size);
+		}
+
+		static void ONI_CALLBACK_TYPE freeFrameBufferCallback(void* data, void* pCookie)
+		{
+			FrameAllocator* pThis = (FrameAllocator*)pCookie;
+			pThis->freeFrameBuffer(data);
+		}
+	};
+
 	/**
 	Default constructor.  Creates a new, non-valid @ref VideoStream object.  The object created will be invalid until its create() function
 	is called with a valid Device.
 	*/
-	VideoStream() : m_stream(NULL), m_sensorInfo(), m_pCameraSettings(NULL)
+	VideoStream() : m_stream(NULL), m_sensorInfo(), m_pCameraSettings(NULL), m_isOwner(true)
 	{}
+
+	/**
+	Handle constructor. Creates a VideoStream object based on the given initialized handle.
+	This object will not destroy the underlying handle when  @ref destroy() or destructor is called
+	*/
+	explicit VideoStream(OniStreamHandle handle) : m_stream(NULL), m_sensorInfo(), m_pCameraSettings(NULL), m_isOwner(false)
+	{
+		_setHandle(handle);
+	}
 
 	/**
 	Destructor.  The destructor calls the destroy() function, but it is considered a best practice for applications to
@@ -779,6 +815,28 @@ public:
 
 		oniStreamUnregisterNewFrameCallback(m_stream, pListener->m_callbackHandle);
 		pListener->m_callbackHandle = NULL;
+	}
+
+	/**
+	Sets the frame buffers allocator for this video stream.
+	@param [in] pAllocator Pointer to the frame buffers allocator object. Pass NULL to return to default frame allocator.
+	@returns ONI_STATUS_OUT_OF_FLOW The frame buffers allocator cannot be set while stream is streaming.
+	*/
+	Status setFrameBuffersAllocator(FrameAllocator* pAllocator)
+	{
+		if (!isValid())
+		{
+			return STATUS_ERROR;
+		}
+
+		if (pAllocator == NULL)
+		{
+			return (Status)oniStreamSetFrameBuffersAllocator(m_stream, NULL, NULL, NULL);
+		}
+		else
+		{
+			return (Status)oniStreamSetFrameBuffersAllocator(m_stream, pAllocator->allocateFrameBufferCallback, pAllocator->freeFrameBufferCallback, pAllocator);
+		}
 	}
 
 	/**
@@ -1083,7 +1141,7 @@ public:
 	@returns Status code indicating success or failure of this operation.
 	*/
 	template <class T>
-	Status invoke(int commandId, const T& value)
+	Status invoke(int commandId, T& value)
 	{
 		return invoke(commandId, &value, sizeof(T));
 	}
@@ -1124,6 +1182,7 @@ private:
 	OniStreamHandle m_stream;
 	SensorInfo m_sensorInfo;
 	CameraSettings* m_pCameraSettings;
+	bool m_isOwner;
 };
 
 /**
@@ -1149,9 +1208,18 @@ public:
 	Default constructor. Creates a new empty Device object. This object will be invalid until it is initialized by
 	calling its open() function.
 	*/
-	Device() : m_pPlaybackControl(NULL), m_device(NULL)
+	Device() : m_pPlaybackControl(NULL), m_device(NULL), m_isOwner(true)
 	{
 		clearSensors();
+	}
+
+	/**
+	Handle constructor. Creates a Device object based on the given initialized handle.
+	This object will not destroy the underlying handle when  @ref close() or destructor is called
+	*/
+	explicit Device(OniDeviceHandle handle) : m_pPlaybackControl(NULL), m_device(NULL), m_isOwner(false)
+	{
+		_setHandle(handle);
 	}
 
 	/**
@@ -1426,6 +1494,11 @@ public:
 		return rc;
 	}
 
+	bool getDepthColorSyncEnabled()
+	{
+		return oniDeviceGetDepthColorSyncEnabled(m_device) == TRUE;
+	}
+
 	/**
 	Sets a property that takes an arbitrary data type as its input.  It is not expected that
 	application code will need this function frequently, as all commonly used properties have
@@ -1477,7 +1550,7 @@ public:
 	@param [in] dataSize size of the buffer passed in @c data.
 	@returns Status code indicating success or failure of this operation.
 	*/
-	Status invoke(int commandId, const void* data, int dataSize)
+	Status invoke(int commandId, void* data, int dataSize)
 	{
 		return (Status)oniDeviceInvoke(m_device, commandId, data, dataSize);
 	}
@@ -1492,7 +1565,7 @@ public:
 	@returns Status code indicating success or failure of this operation.
 	*/
 	template <class T>
-	Status invoke(int propertyId, const T& value)
+	Status invoke(int propertyId, T& value)
 	{
 		return invoke(propertyId, &value, sizeof(T));
 	}
@@ -1541,6 +1614,8 @@ private:
 	OniDeviceHandle m_device;
 	DeviceInfo m_deviceInfo;
 	SensorInfo m_aSensorInfo[ONI_MAX_SENSORS];
+
+	bool m_isOwner;
 };
 
 /**
@@ -1763,6 +1838,35 @@ public:
 		return rc == STATUS_OK && enabled == TRUE;
 	}
 
+	Status setGain(int gain)
+	{
+		return setProperty(STREAM_PROPERTY_GAIN, gain);
+	}
+	Status setExposure(int exposure)
+	{
+		return setProperty(STREAM_PROPERTY_EXPOSURE, exposure);
+	}
+	int getGain()
+	{
+		int gain;
+		Status rc = getProperty(STREAM_PROPERTY_GAIN, &gain);
+		if (rc != STATUS_OK)
+		{
+			return 100;
+		}
+		return gain;
+	}
+	int getExposure()
+	{
+		int exposure;
+		Status rc = getProperty(STREAM_PROPERTY_EXPOSURE, &exposure);
+		if (rc != STATUS_OK)
+		{
+			return 0;
+		}
+		return exposure;
+	}
+
 	bool isValid() const {return m_pStream != NULL;}
 private:
 	template <class T>
@@ -1831,6 +1935,11 @@ public:
 			m_deviceConnectedCallbacks.deviceStateChanged = NULL;
 			m_deviceConnectedCallbacksHandle = NULL;
 		}
+		
+		virtual ~DeviceConnectedListener()
+		{
+		}
+		
 		/**
 		* Callback function for the onDeviceConnected event.  This function will be 
 		* called whenever this event occurs.  When this happens, a pointer to the @ref DeviceInfo
@@ -1881,6 +1990,11 @@ public:
 			m_deviceDisconnectedCallbacks.deviceStateChanged = NULL;
 			m_deviceDisconnectedCallbacksHandle = NULL;
 		}
+		
+		virtual ~DeviceDisconnectedListener()
+		{
+		}
+		
 		/**
 		 * Callback function for the onDeviceDisconnected event. This function will be
 		 * called whenever this event occurs.  When this happens, a pointer to the DeviceInfo
@@ -1924,6 +2038,11 @@ public:
 			m_deviceStateChangedCallbacks.deviceStateChanged = deviceStateChangedCallback;
 			m_deviceStateChangedCallbacksHandle = NULL;
 		}
+		
+		virtual ~DeviceStateChangedListener()
+		{
+		}
+		
 		/**
 		* Callback function for the onDeviceStateChanged event.  This function will be 
 		* called whenever this event occurs.  When this happens, a pointer to a DeviceInfo
@@ -2388,13 +2507,13 @@ private:
 Status VideoStream::create(const Device& device, SensorType sensorType)
 {
 	OniStreamHandle streamHandle;
-	Status rc = (Status)oniDeviceCreateStream(device._getHandle(),
-			(OniSensorType)sensorType, &streamHandle);
+	Status rc = (Status)oniDeviceCreateStream(device._getHandle(), (OniSensorType)sensorType, &streamHandle);
 	if (rc != STATUS_OK)
 	{
 		return rc;
 	}
 
+	m_isOwner = true;
 	_setHandle(streamHandle);
 
 	if (isPropertySupported(STREAM_PROPERTY_AUTO_WHITE_BALANCE) && isPropertySupported(STREAM_PROPERTY_AUTO_EXPOSURE))
@@ -2420,13 +2539,24 @@ void VideoStream::destroy()
 
 	if (m_stream != NULL)
 	{
-		oniStreamDestroy(m_stream);
+		if(m_isOwner)
+			oniStreamDestroy(m_stream);
 		m_stream = NULL;
 	}
 }
 
 Status Device::open(const char* uri)
 {
+	//If we are not the owners, we stick with our own device
+	if(!m_isOwner)
+	{
+		if(isValid()){
+			return STATUS_OK;
+		}else{
+			return STATUS_OUT_OF_FLOW;
+		}
+	}
+
 	OniDeviceHandle deviceHandle;
 	Status rc = (Status)oniDeviceOpen(uri, &deviceHandle);
 	if (rc != STATUS_OK)
@@ -2454,7 +2584,11 @@ void Device::close()
 
 	if (m_device != NULL)
 	{
-		oniDeviceClose(m_device);
+		if(m_isOwner)
+		{
+			oniDeviceClose(m_device);
+		}
+
 		m_device = NULL;
 	}
 }

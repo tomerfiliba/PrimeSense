@@ -75,6 +75,7 @@ ONI_C_API OniStatus oniDeviceCreateStream(OniDeviceHandle device, OniSensorType 
 
 ONI_C_API OniStatus oniDeviceEnableDepthColorSync(OniDeviceHandle device);
 ONI_C_API void oniDeviceDisableDepthColorSync(OniDeviceHandle device);
+ONI_C_API OniBool oniDeviceGetDepthColorSyncEnabled(OniDeviceHandle device);
 
 /** Set property in the device. Use the properties listed in OniTypes.h: ONI_DEVICE_PROPERTY_..., or specific ones supplied by the device. */
 ONI_C_API OniStatus oniDeviceSetProperty(OniDeviceHandle device, int propertyId, const void* data, int dataSize);
@@ -83,7 +84,7 @@ ONI_C_API OniStatus oniDeviceGetProperty(OniDeviceHandle device, int propertyId,
 /** Check if the property is supported by the device. Use the properties listed in OniTypes.h: ONI_DEVICE_PROPERTY_..., or specific ones supplied by the device. */
 ONI_C_API OniBool oniDeviceIsPropertySupported(OniDeviceHandle device, int propertyId);
 /** Invoke an internal functionality of the device. */
-ONI_C_API OniStatus oniDeviceInvoke(OniDeviceHandle device, int commandId, const void* data, int dataSize);
+ONI_C_API OniStatus oniDeviceInvoke(OniDeviceHandle device, int commandId, void* data, int dataSize);
 /** Check if a command is supported, for invoke */
 ONI_C_API OniBool oniDeviceIsCommandSupported(OniDeviceHandle device, int commandId);
 
@@ -94,7 +95,7 @@ ONI_C_API OniBool oniDeviceIsImageRegistrationModeSupported(OniDeviceHandle devi
 /** Destroy an existing stream */
 ONI_C_API void oniStreamDestroy(OniStreamHandle stream);
 
-/** Get the OniSourceInfo of the certain stream. */
+/** Get the OniSensorInfo of the certain stream. */
 ONI_C_API const OniSensorInfo* oniStreamGetSensorInfo(OniStreamHandle stream);
 
 /** Start generating data from the stream. */
@@ -117,10 +118,11 @@ ONI_C_API OniStatus oniStreamGetProperty(OniStreamHandle stream, int propertyId,
 /** Check if the property is supported the stream. Use the properties listed in OniTypes.h: ONI_STREAM_PROPERTY_..., or specific ones supplied by the device for its streams. */
 ONI_C_API OniBool oniStreamIsPropertySupported(OniStreamHandle stream, int propertyId);
 /** Invoke an internal functionality of the stream. */
-ONI_C_API OniStatus oniStreamInvoke(OniStreamHandle stream, int commandId, const void* data, int dataSize);
+ONI_C_API OniStatus oniStreamInvoke(OniStreamHandle stream, int commandId, void* data, int dataSize);
 /** Check if a command is supported, for invoke */
 ONI_C_API OniBool oniStreamIsCommandSupported(OniStreamHandle stream, int commandId);
-// handle registration of pixel
+/** Sets the stream buffer allocation functions. Note that this function may only be called while stream is not started. */
+ONI_C_API OniStatus oniStreamSetFrameBuffersAllocator(OniStreamHandle stream, OniFrameAllocBufferCallback alloc, OniFrameFreeBufferCallback free, void* pCookie);
 
 ////
 /** Mark another user of the frame. */

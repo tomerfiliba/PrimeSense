@@ -1,4 +1,4 @@
-from cbinder import CBindings
+from cbinder.generator import CBindings
 
 predefs = {
     "ONI_C" : ((), ""), 
@@ -28,10 +28,11 @@ prelude = [
 class OpenNI2Builder(CBindings):
     @classmethod
     def build(cls):
-        builder = cls("../res/include/OniCAPI.h", 
-            includes = ["OniCEnums.h", "OniCProperties.h", "OniCTypes.h", "OniVersion.h"], 
+        builder = cls(["../res/include/OniCAPI.h", "../res/include/PSLink.h", "../res/include/PS1080.h"], 
+            includes = ["OniCEnums.h", "OniCProperties.h", "OniCTypes.h", "OniVersion.h", "PrimeSense.h"], 
             predefs = predefs, 
-            prelude = prelude)
+            prelude = prelude, 
+            debug = True)
         builder.export("../primelib/_openni2.py")
 
     def filter_type(self, tp):
@@ -47,7 +48,10 @@ class OpenNI2Builder(CBindings):
             with m.def_("wrapper", "*args"):
                 m.stmt("res = func(*args)")
                 with m.if_("res != OniStatus.ONI_STATUS_OK"):
-                    m.raise_("OpenNIError(res, oniGetExtendedError().strip())")
+                    m.stmt("msg = oniGetExtendedError()")
+                    with m.if_("not msg"):
+                        m.stmt("msg = ''")
+                    m.raise_("OpenNIError(res, msg.strip())")
                 m.return_("res")
             m.return_("wrapper")
 
@@ -56,45 +60,8 @@ class OpenNI2Builder(CBindings):
             m.stmt("@oni_call")
         CBindings.emit_func(self, m, func)
 
-class Nite2Builder(CBindings):
-    @classmethod
-    def build(cls):
-        builder = cls("../res/include/NiteCAPI.h", 
-            includes = ["NiteCEnums.h", "NiteCTypes.h", "NiteVersion.h", 
-                "OniCAPI.h", "OniCEnums.h", "OniCProperties.h", "OniCTypes.h", "OniVersion.h"], 
-            predefs = predefs, 
-            prelude = prelude)
-        builder.export("../primelib/_nite2.py")
-
-    def filter_type(self, tp):
-        return tp.name not in ["bool", "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", 
-            "uint16_t", "uint32_t", "uint64_t"]
-    
-    def filter_func(self, func):
-        return not func.name.lower().startswith("oni")
-    
-    def before_funcs_hook(self, m):
-        m.import_("functools")
-        m.from_("primelib.utils", "NiteError")
-        m.sep()
-        with m.def_("nite_call", "func"):
-            m.stmt("@functools.wraps(func)")
-            with m.def_("wrapper", "*args"):
-                m.stmt("res = func(*args)")
-                with m.if_("res != NiteStatus.NITE_STATUS_OK"):
-                    m.raise_("NiteError(res)")
-                m.return_("res")
-            m.return_("wrapper")
-    
-    def emit_func(self, m, func):
-        if func.type.name == "NiteStatus":
-            m.stmt("@nite_call")
-        CBindings.emit_func(self, m, func)
-
-
 
 if __name__ == "__main__":
     OpenNI2Builder.build()
-    Nite2Builder.build()
 
 

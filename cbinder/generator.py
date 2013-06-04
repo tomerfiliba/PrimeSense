@@ -18,7 +18,7 @@ ifdef_pattern = re.compile(r'^\s*#\s*ifdef\s+(\w+)\s*$', re.IGNORECASE)
 ifndef_pattern = re.compile(r'^\s*#\s*ifndef\s+(\w+)\s*$', re.IGNORECASE)
 ml_comment_pattern = re.compile(r'/\*.*?\*/', re.DOTALL)
 sl_comment_pattern = re.compile(r'//.*?\n')
-delimiters = re.compile(r'''([!%^&*()[\]{};,:+\-/?:\s"'|=])''')
+delimiters = re.compile(r'''([!%^&*()[\]{}<>;,:+\-/?:\s"'|=])''')
 identifier_pattern = re.compile(r'[a-zA-Z_][a-zA-Z_0-9]*')
 
 def strip_comments(text):
@@ -40,14 +40,6 @@ class CFunc(object):
         self.type = type
 
 @autorepr
-class CStruct(object):
-    def __init__(self, name, members):
-        self.name = name
-        self.members = members
-    def get_ctype(self):
-        return self.name
-
-@autorepr
 class CEnum(object):
     def __init__(self, name, members):
         self.name = name
@@ -56,10 +48,20 @@ class CEnum(object):
         return "ctypes.c_int"
 
 @autorepr
-class CUnion(object):
-    def __init__(self, name, members):
+class CStruct(object):
+    def __init__(self, name, members, packed = False):
         self.name = name
         self.members = members
+        self.packed = packed
+    def get_ctype(self):
+        return self.name
+
+@autorepr
+class CUnion(object):
+    def __init__(self, name, members, packed = False):
+        self.name = name
+        self.members = members
+        self.packed = packed
     def get_ctype(self):
         return self.name
 
@@ -99,11 +101,12 @@ class CType(object):
         "uint64_t" : "c_ulonglong", "unsigned __int64" : "c_ulonglong",
     }
     
-    def __init__(self, name, indir_levels = 0, subscripts = None, quals = None):
+    def __init__(self, name, indir_levels = 0, subscripts = None, quals = None, calling_convention = "auto"):
         self.name = name
         self.indir_levels = indir_levels
         self.subscripts = subscripts
         self.quals = None
+        self.calling_convention = calling_convention
     
     def get_ctype(self):
         if self.indir_levels == 1 and not self.quals:
@@ -115,12 +118,21 @@ class CType(object):
                 return "ctypes.c_void_p"
         
         if isinstance(self.name, tuple):
-            # CFUNCTYPE(c_int, POINTER(c_int), POINTER(c_int))
             restype, argtypes = self.name
             restype = restype.get_ctype()
             if restype == "void":
                 restype = None
-            tp = "ctypes.CFUNCTYPE(%s, %s)" % (restype, ", ".join(a.get_ctype() for _, a in argtypes))
+            
+            if self.calling_convention == "auto":
+                callingconv = "_get_calling_conv"
+            elif self.calling_convention == "stdcall":
+                callingconv = "ctypes.WINFUNCTYPE"
+            elif self.calling_convention == "cdecl":
+                callingconv = "ctypes.CFUNCTYPE"
+            else:
+                raise ValueError("Unknown calling convention %r" % (self.calling_convention))
+            
+            tp = "%s(%s, %s)" % (callingconv, restype, ", ".join(a.get_ctype() for _, a in argtypes))
             for _ in range(self.indir_levels - 1):
                 tp = "ctypes.POINTER(%s)" % (tp)
         else:
@@ -148,9 +160,19 @@ class CtypesGenVisitor(c_ast.NodeVisitor):
 
     def eval_const(self, node):
         if isinstance(node, c_ast.UnaryOp):
-            return eval("%s%s" % (node.op, node.expr.value))
+            expr = "(%s%s)" % (node.op, self.eval_const(node.expr))
+            try:
+                return eval(expr)
+            except Exception:
+                return expr
         elif isinstance(node, c_ast.BinaryOp):
-            return eval("%s%s%s" % (node.left.value, node.op, node.right.value))
+            expr = "(%s %s %s)" % (self.eval_const(node.left), node.op, self.eval_const(node.right))
+            try:
+                return eval(expr)
+            except Exception:
+                return expr
+        elif isinstance(node, c_ast.ID):
+            return node.name
         elif isinstance(node.value, c_ast.ID):
             return node.value.name
         elif node.value.startswith("0x"):
@@ -181,8 +203,11 @@ class CtypesGenVisitor(c_ast.NodeVisitor):
             else:
                 subscripts = [self.eval_const(node.dim)]
             return self.type_to_ctype(node.type, quals, indir_levels, subscripts)
+        elif isinstance(node, (c_ast.Struct, c_ast.Union)):
+            return CType(node.name, indir_levels = indir_levels, quals = quals if quals else None, 
+                subscripts = subscripts if subscripts else None)
         else:
-            print node.show()
+            node.show(showcoord = True)
             raise TypeError(node)
     
     def visit_Decl(self, node):
@@ -211,9 +236,10 @@ class CtypesGenVisitor(c_ast.NodeVisitor):
     
     def create_struct(self, node):
         members = []
-        for m in node.decls:
-            members.append((m.name, self.type_to_ctype(m.type)))
-        struct = CStruct(node.name, members)
+        if node.decls:
+            for m in node.decls:
+                members.append((m.name, self.type_to_ctype(m.type)))
+        struct = CStruct(node.name, members, packed = node.coord.line in self.module.packed_lines)
         if not struct.name:
             struct.name = "_anon_struct_%d" % (self.counter.next(),)
         self.module.types[struct.name] = struct
@@ -223,29 +249,31 @@ class CtypesGenVisitor(c_ast.NodeVisitor):
         members = []
         for m in node.decls:
             members.append((m.name, self.type_to_ctype(m.type)))
-        union = CUnion(node.name, members)
+        union = CUnion(node.name, members, packed = node.coord.line in self.module.packed_lines)
         if not union.name:
             union.name = "_anon_union_%d" % (self.counter.next(),)
         self.module.types[union.name] = union
         return union.name
     
-    def _resolve_typedef(self, realname, newname):
+    def _resolve_typedef(self, node, realname, newname):
         if realname.startswith("_anon_"):
             obj = self.module.types.pop(realname)
             obj.name = newname
             self.module.types[obj.name] = obj
-        else:
+            if isinstance(obj, (CStruct, CUnion)):
+                obj.packed |= node.coord.line in self.module.packed_lines
+        elif newname != realname:
             self.module.types[newname] = CTypedef(newname, CType(realname))
     
     def visit_Typedef(self, node):
         if isinstance(node.type, c_ast.TypeDecl):
             node2 = node.type.type
             if isinstance(node2, c_ast.Enum):
-                self._resolve_typedef(self.create_enum(node2), node.name)
+                self._resolve_typedef(node, self.create_enum(node2), node.name)
             elif isinstance(node2, c_ast.Struct):
-                self._resolve_typedef(self.create_struct(node2), node.name)
+                self._resolve_typedef(node, self.create_struct(node2), node.name)
             elif isinstance(node2, c_ast.Union):
-                self._resolve_typedef(self.create_union(node2), node.name)
+                self._resolve_typedef(node, self.create_union(node2), node.name)
             elif isinstance(node2, c_ast.IdentifierType):
                 self.module.types[node.name] = CTypedef(node.name, self.type_to_ctype(node2))
             else:
@@ -262,31 +290,57 @@ class CtypesGenVisitor(c_ast.NodeVisitor):
 
 
 class CBindings(object):
-    def __init__(self, hfile, includes = [], predefs = {}, prelude = [], debug = False):
-        self.hfile = hfile
+    def __init__(self, hfiles, includes = [], predefs = {}, prelude = [], debug = False):
+        self.hfiles = hfiles
         self.types = OrderedDict()
         self.funcs = OrderedDict()
         self.macros = OrderedDict()
         self.macros.update(predefs)
         
-        lines = self._load_with_includes(hfile, includes)
+        lines = []
+        self._included = set()
+        for hfile in hfiles:
+            lines.extend(self._load_with_includes(hfile, includes))
         lines[0:0] = prelude
         text = self._preprocess(lines)
         if debug:
             with open("tmp.c", "w") as f:
                 f.write(text)
         
+        self.packed_lines = set(self._get_packed_regions(text))
+        
         parser = CParser()
-        ast = parser.parse(text, hfile)
+        ast = parser.parse(text, "tmp.c")
         visitor = CtypesGenVisitor(self)
         visitor.visit(ast)
     
-    @classmethod
-    def _load_with_includes(cls, rootfile, includes):
+    def _get_packed_regions(self, text):
+        lines = text.splitlines()
+        in_packed = False
+        for i, l in enumerate(lines, 1):
+            l = l.strip().lower()
+            if not l.startswith("#pragma") or "pack" not in l:
+                if in_packed:
+                    yield i
+                continue
+            
+            if "push" in l:
+                if in_packed:
+                    raise ValueError("Detected #pragma pack without a matching pop")
+                in_packed = True
+            elif "pop" in l:
+                if not in_packed:
+                    raise ValueError("Detected #pragma pop without a matching pack")
+                in_packed = False
+            else:
+                raise ValueError("Unknown #pragma pack option %r" % (l,))
+        if in_packed:
+            raise ValueError("Detected #pragma pack without a matching pop")
+    
+    def _load_with_includes(self, rootfile, includes):
         path = os.path.dirname(os.path.abspath(rootfile))
-        lines = strip_comments(open(rootfile, "rU").read()).splitlines() + ['']
+        lines = strip_comments(open(rootfile, "rU").read()+"\n\n\n").splitlines()
         i = -1
-        included = set()
         while i + 1 < len(lines):
             i += 1
             line = lines[i]
@@ -296,10 +350,10 @@ class CBindings(object):
             del lines[i]
             i -= 1
             filename = m.group(1)
-            if filename not in includes or filename in included:
+            if filename not in includes or filename in self._included:
                 continue
-            included.add(filename)
-            lines2 = strip_comments(open(os.path.join(path, filename), "rU").read()).splitlines() + ['']
+            self._included.add(filename)
+            lines2 = strip_comments(open(os.path.join(path, filename), "rU").read()+"\n\n\n").splitlines()
             lines[i+1:i+1] = lines2
         return [l.strip() for l in lines if l.strip()]
     
@@ -337,15 +391,23 @@ class CBindings(object):
     def export(self, filename):
         m = PythonModule()
         m.comment("Auto-generated file; do not edit directly", time.ctime())
+        m.import_("sys")
         m.sep()
         m.import_("ctypes")
         m.from_("cbinder.lib", "CEnum", "UnloadedDLL")
+        self.emit_prelude(m)
         m.sep()
         generated_macros = set()
         for name, (args, value) in self.macros.items():
             if not self.filter_macro(name, args, value):
                 continue
             self.emit_macro(m, name, args, value, generated_macros)
+        m.sep()
+        with m.def_("_get_calling_conv", "*args"):
+            with m.if_("sys.platform == 'win32'"):
+                m.return_("ctypes.WINFUNCTYPE(*args)")
+            with m.else_():
+                m.return_("ctypes.CFUNCTYPE(*args)")
         m.sep()
         for t in self.types.values():
             if not self.filter_type(t):
@@ -424,6 +486,9 @@ class CBindings(object):
     def filter_func(self, func):
         return True
     
+    def emit_prelude(self, m):
+        pass
+    
     def emit_macro(self, m, name, args, value, generated_macros):
         if not value:
             return
@@ -463,6 +528,8 @@ class CBindings(object):
     
     def emit_struct_decl(self, m, tp):
         with m.class_(tp.name, ["ctypes.Structure"]):
+            if tp.packed:
+                m.stmt("_packed_ = 1")
             for name, type in tp.members:         # @ReservedAssignment
                 m.stmt("{0} = {1!r}", name, type.get_ctype())
             m.sep()
@@ -479,6 +546,8 @@ class CBindings(object):
 
     def emit_union_decl(self, m, tp):
         with m.class_(tp.name, ["ctypes.Union"]):
+            if tp.packed:
+                m.stmt("_packed_ = 1")
             for name, type in tp.members:         # @ReservedAssignment
                 m.stmt("{0} = {1!r}", name, type.get_ctype())
             m.sep()
@@ -495,6 +564,10 @@ class CBindings(object):
             m.stmt("_values_ = {0!r}", dict((v, k) for k, v in tp.members))
             for name, value in tp.members:
                 m.stmt("{0} = {1}", name, value)
+        self.emit_enum_top_level_fields(m, tp)
+        m.sep()
+    
+    def emit_enum_top_level_fields(self, m, tp):
         if tp.name.startswith("_anon_"):
             for k, _ in tp.members:
                 m.stmt("{0} = {1}.{0}", k, tp.name)
