@@ -1,3 +1,0 @@
-PrimeSense Python Libraries
-===========================
-

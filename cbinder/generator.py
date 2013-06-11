@@ -394,7 +394,6 @@ class CBindings(object):
         m.import_("sys")
         m.sep()
         m.import_("ctypes")
-        m.from_("cbinder.lib", "CEnum", "UnloadedDLL")
         self.emit_prelude(m)
         m.sep()
         generated_macros = set()
@@ -487,7 +486,7 @@ class CBindings(object):
         return True
     
     def emit_prelude(self, m):
-        pass
+        m.from_("cbinder.lib", "CEnum", "UnloadedDLL")
     
     def emit_macro(self, m, name, args, value, generated_macros):
         if not value:

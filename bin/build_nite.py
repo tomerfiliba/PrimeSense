@@ -18,6 +18,10 @@ class Nite2Builder(CBindings):
     
     def filter_func(self, func):
         return not func.name.lower().startswith("oni")
+
+    def emit_prelude(self, m):
+        #copy("../cbinder/lib.py", "../primelib/cbinder_lib.py")
+        m.from_("primelib.utils", "CEnum", "UnloadedDLL")
     
     def emit_struct_decl(self, m, tp):
         if tp.name.lower().startswith("oni"):

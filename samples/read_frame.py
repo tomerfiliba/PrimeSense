@@ -1,5 +1,4 @@
 from primelib import openni2
-import msvcrt
 import sys
 
 
@@ -12,7 +11,7 @@ print ("IR", d.get_sensor_info(openni2.SENSOR_IR))
 print ("DEPTH", d.get_sensor_info(openni2.SENSOR_DEPTH))
 print ("COLOR", d.get_sensor_info(openni2.SENSOR_COLOR))
 
-depth = d.get_depth_stream()
+depth = d.create_depth_stream()
 assert depth is not None
 
 print ("v-fov:", depth.get_vertical_fov())
@@ -21,7 +20,7 @@ print ("camera settings:", depth.camera)
 
 depth.start()
 
-while not msvcrt.kbhit():
+for i in range(100):
     s = openni2.wait_for_any_stream([depth], 2)
     if not s:
         continue
@@ -31,11 +30,11 @@ while not msvcrt.kbhit():
         print ("Unexpected frame format", frame.videoMode.pixelFormat)
         continue
     
-    data = frame.get_buffer()
+    data = frame.get_buffer_as_uint16()
     middle_index = (frame.height + 1) * frame.width // 2
-    sys.stdout.write("ts = %s, middle = 0x%02x\r" % (frame.timestamp, data[middle_index]))
+    print ("ts = %s, middle = 0x%02x" % (frame.timestamp, data[middle_index]))
 
-print ("\n\ngoodbye")
+print ("\ngoodbye")
 depth.stop()
 openni2.unload()
 

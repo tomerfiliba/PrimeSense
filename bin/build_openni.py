@@ -1,4 +1,5 @@
 from cbinder.generator import CBindings
+ 
 
 predefs = {
     "ONI_C" : ((), ""), 
@@ -32,12 +33,17 @@ class OpenNI2Builder(CBindings):
             includes = ["OniCEnums.h", "OniCProperties.h", "OniCTypes.h", "OniVersion.h", "PrimeSense.h"], 
             predefs = predefs, 
             prelude = prelude, 
-            debug = True)
+            #debug = True
+            )
         builder.export("../primelib/_openni2.py")
 
     def filter_type(self, tp):
         return tp.name not in ["bool", "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", 
             "uint16_t", "uint32_t", "uint64_t"]
+
+    def emit_prelude(self, m):
+        #copy("../cbinder/lib.py", "../primelib/cbinder_lib.py")
+        m.from_("primelib.utils", "CEnum", "UnloadedDLL")
 
     def before_funcs_hook(self, m):
         m.import_("functools")

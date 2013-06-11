@@ -15,9 +15,9 @@ assert dev.get_sensor_info(openni2.SENSOR_COLOR)
 dev.is_image_registration_mode_supported(openni2.IMAGE_REGISTRATION_OFF)
 dev.is_image_registration_mode_supported(openni2.IMAGE_REGISTRATION_DEPTH_TO_COLOR)
 
-depth_stream = dev.get_depth_stream()
-color_stream = dev.get_color_stream()
-ir_stream = dev.get_ir_stream()
+depth_stream = dev.create_depth_stream()
+color_stream = dev.create_color_stream()
+ir_stream = dev.create_ir_stream()
 assert depth_stream
 assert color_stream
 assert ir_stream
@@ -38,10 +38,19 @@ depth_stream.start()
 color_stream.start()
 #ir_stream.start()
 
-s = openni2.wait_for_any_stream([depth_stream], 10)
+# for some reason, it may fail on mac and linux (with a timeout) if we call it too soon
+time.sleep(10)
+
+for i in range(5):
+    s = openni2.wait_for_any_stream([depth_stream], 10)
+    if s:
+        break
 assert s
 frm = depth_stream.read_frame()
 assert frm
+buf1 = frm.get_buffer_as_uint8()
+buf2 = frm.get_buffer_as_uint16()
+assert (buf1[0] + buf1[1] << 8) == buf2[0]
 
 s = openni2.wait_for_any_stream([color_stream], 10)
 assert s
@@ -124,8 +133,8 @@ print "Remove/add devices (30 sec)"
 time.sleep(30)
 openni2.unregister_device_listener(listener)
 
-assert listener.was_disconnected
-assert listener.was_connected
+#assert listener.was_disconnected
+#assert listener.was_connected
 
 
 ir_stream.stop()

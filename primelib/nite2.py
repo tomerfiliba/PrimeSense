@@ -1,43 +1,78 @@
+import sys
 import os
+import weakref
+import atexit
 import ctypes
+import platform
 from primelib import _nite2 as c_api
 from primelib import openni2
 from primelib.utils import inherit_properties, ClosedHandle, HandleObject, InitializationError
-import weakref
-import atexit
 
 
-_default_dll_directories = [".", "C:\\Program Files (x86)\\PrimeSense\\NiTE2\\Redist",
-    "C:\\Program Files\\PrimeSense\\NiTE2\\Redist"] 
+arch = int(platform.architecture()[0].lower().replace("bit", ""))
+
+_default_dll_directories = []
+if arch == 32:
+    if "NITE2_REDIST" in os.environ:
+        _default_dll_directories.append(os.environ["NITE2_REDIST"])
+elif arch == 64:
+    if "NITE2_REDIST64" in os.environ:
+        _default_dll_directories.append(os.environ["NITE2_REDIST64"])
+    elif "NITE2_REDIST" in os.environ:
+        _default_dll_directories.append(os.environ["NITE2_REDIST"])
+
+_default_dll_directories.append(".")
+
+if sys.platform == "win32":
+    _dll_name = "NiTE2.dll"
+elif sys.platform == "darwin":
+    _dll_name = "libNiTE2.dylib"
+else:
+    _dll_name = "libNiTE2.so"
+
 
 _nite2_initialized = False
-dll_directory = None
+loaded_dll_directory = None
 def initialize(dll_directories = _default_dll_directories):
     global _nite2_initialized
-    global dll_directory
+    global loaded_dll_directory
     if _nite2_initialized:
-        raise InitializationError("NiTE2 already initialized")
+        return
+        #raise InitializationError("NiTE2 already initialized")
     if isinstance(dll_directories, str):
         dll_directories = [dll_directories]
+        
+    if not openni2.is_initialized():
+        openni2.initialize()
+
+    if loaded_dll_directory:
+        c_api.niteInitialize()
+        return
     
     found = False
     prev = os.getcwd()
     exceptions = []
+    dll_directories = [os.path.normpath(os.path.abspath(d)) for d in dll_directories]
     
     for dlldir in dll_directories:
         if not os.path.isdir(dlldir):
             exceptions.append((dlldir, "Directory does not exist"))
             continue
+        fullpath = os.path.join(dlldir, _dll_name)
+        if not os.path.isfile(fullpath):
+            exceptions.append((fullpath, "file does not exist"))
+            continue
         try:
             os.chdir(dlldir)
-            c_api.load_dll("NiTE2")
+            c_api.load_dll(fullpath)
             c_api.niteInitialize()
         except Exception as ex:
-            exceptions.append((dlldir, ex))
+            exceptions.append((fullpath, ex))
         else:
             found = True
-            dll_directory = dlldir
+            loaded_dll_directory = dlldir
             break
+    
     os.chdir(prev)
     if not found:
         raise InitializationError("NiTE2 could not be loaded:\n    %s" % 
@@ -58,10 +93,10 @@ def unload():
     if not _nite2_initialized:
         return
     _nite2_initialized = False
-    for coll in [_registered_user_tracker_frames, _registered_hand_tracker_frames, _registered_hand_trackers, _registered_user_trackers]:
-        for hndl in coll:
-            hndl.close()
-        coll.clear()
+    #for coll in [_registered_user_tracker_frames, _registered_hand_tracker_frames, _registered_hand_trackers, _registered_user_trackers]:
+    #    for hndl in coll:
+    #        hndl.close()
+    #    coll.clear()
     c_api.niteShutdown()
 
 atexit.register(unload)
@@ -127,10 +162,11 @@ class UserTrackerFrame(HandleObject):
             u = UserData(self.pUser[i])
             self.users.append(u)
             self.users_by_id[u.id] = u
-        _registered_user_tracker_frames.add(self)
+        #_registered_user_tracker_frames.add(self)
     
     def _close(self):
-        c_api.niteUserTrackerFrameRelease(self._user_tracker_handle, self._handle)
+        if is_initialized():
+            c_api.niteUserTrackerFrameRelease(self._user_tracker_handle, self._handle)
         self._frame = ClosedHandle
         self._user_tracker_handle = ClosedHandle
         del self.users[:]
@@ -157,14 +193,15 @@ class UserTracker(HandleObject):
         else:
             c_api.niteInitializeUserTrackerByDevice(ctypes.byref(self._devstruct), ctypes.byref(handle))
         HandleObject.__init__(self, handle)
-        _registered_user_trackers.add(self)
+        #_registered_user_trackers.add(self)
         
     @classmethod
     def open_any(cls):
         return UserTracker(None)
 
     def _close(self):
-        c_api.niteShutdownUserTracker(self._handle)
+        if is_initialized():
+            c_api.niteShutdownUserTracker(self._handle)
 
     def read_frame(self):
         pnf = ctypes.POINTER(c_api.NiteUserTrackerFrame)()
@@ -270,10 +307,11 @@ class HandTrackerFrame(HandleObject):
         self._depth_frame = None
         self._hands = None
         self._gestures = None
-        _registered_hand_tracker_frames.add(self)
+        #_registered_hand_tracker_frames.add(self)
     
     def _close(self):
-        c_api.niteHandTrackerFrameRelease(self._hand_tracker_handle, self._handle)
+        if is_initialized():
+            c_api.niteHandTrackerFrameRelease(self._hand_tracker_handle, self._handle)
 
     @property
     def depth_frame(self):
@@ -304,10 +342,11 @@ class HandTracker(HandleObject):
         else:
             c_api.niteInitializeHandTrackerByDevice(ctypes.byref(self._devstruct), ctypes.byref(handle))
         HandleObject.__init__(self, handle)
-        _registered_hand_trackers.add(self)
+        #_registered_hand_trackers.add(self)
     
     def _close(self):
-        c_api.niteShutdownHandTracker(self._handle)
+        if is_initialized():
+            c_api.niteShutdownHandTracker(self._handle)
 
     def read_frame(self):
         pfrm = ctypes.POINTER(c_api.NiteHandTrackerFrame)()
@@ -326,6 +365,10 @@ class HandTracker(HandleObject):
         new_hand_id = HandId()
         if len(position) == 3:
             position = Point3f(*position)
+        elif len(position) == 1:
+            position = position[0]
+        else:
+            raise TypeError("Either Point3f or three values required")
         c_api.niteStartHandTracking(self._handle, ctypes.byref(position), ctypes.byref(new_hand_id))
         return new_hand_id
     def stop_hand_tracking(self, handid):
@@ -341,13 +384,13 @@ class HandTracker(HandleObject):
     def stop_gesture_detection(self, gesture_type):
         c_api.niteStopGestureDetection(self._handle, gesture_type)
 
-    def convertHandCoordinatesToDepth(self, x, y, z):
+    def convert_hand_coordinates_to_depth(self, x, y, z):
         outX = ctypes.c_float()
         outY = ctypes.c_float()
         c_api.niteConvertHandCoordinatesToDepth(self._handle, x, y, z, ctypes.byref(outX), ctypes.byref(outY))
         return outX.value, outY.value
     
-    def convertDepthCoordinatesToHand(self, x, y, z):
+    def convert_depth_coordinates_to_hand(self, x, y, z):
         outX = ctypes.c_float()
         outY = ctypes.c_float()
         c_api.niteConvertDepthCoordinatesToHand(self._handle, x, y, z, ctypes.byref(outX), ctypes.byref(outY))

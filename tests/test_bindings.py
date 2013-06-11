@@ -23,7 +23,7 @@ class TestBindings(unittest.TestCase):
         from primelib import _openni2
         from primelib import openni2
         
-        openni2.initialize("../res/redist")
+        openni2.initialize()
         ver = openni2.get_version()
         openni2.unload()
 
@@ -89,7 +89,7 @@ class TestBindings(unittest.TestCase):
         from primelib import _nite2
         from primelib import nite2
 
-        nite2.initialize("../res/redist")
+        nite2.initialize()
         ver = nite2.get_version()
         nite2.unload()
 

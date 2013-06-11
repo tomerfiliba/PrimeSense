@@ -1,14 +1,34 @@
+import sys
 import os
 import ctypes
 import weakref
 import atexit
+import platform
 from primelib import _openni2 as c_api
-from primelib.utils import inherit_properties, HandleObject, _py_to_ctype_obj, ClosedHandle, InitializationError,\
-    OpenNIError
+from primelib.utils import (inherit_properties, HandleObject, _py_to_ctype_obj, ClosedHandle, InitializationError,
+    OpenNIError)
 
 
-_default_dll_directories = [".", "c:\\program files\\openni2\\redist", 
-    "c:\\program files (x86)\\openni2\\redist"]
+arch = int(platform.architecture()[0].lower().replace("bit", ""))
+
+_default_dll_directories = []
+if arch == 32:
+    if "OPENNI2_REDIST" in os.environ:
+        _default_dll_directories.append(os.environ["OPENNI2_REDIST"])
+elif arch == 64:
+    if "OPENNI2_REDIST64" in os.environ:
+        _default_dll_directories.append(os.environ["OPENNI2_REDIST64"])
+    elif "OPENNI2_REDIST" in os.environ:
+        _default_dll_directories.append(os.environ["OPENNI2_REDIST"])
+
+_default_dll_directories.append(".")
+
+if sys.platform == "win32":
+    _dll_name = "OpenNI2.dll"
+elif sys.platform == "darwin":
+    _dll_name = "libOpenNI2.dylib"
+else:
+    _dll_name = "libOpenNI2.so"
 
 
 SENSOR_IR = c_api.OniSensorType.ONI_SENSOR_IR
@@ -31,33 +51,44 @@ IMAGE_REGISTRATION_OFF = c_api.OniImageRegistrationMode.ONI_IMAGE_REGISTRATION_O
 
 
 _openni2_initialized = False
-dll_directory = None
+loaded_dll_directory = None
+
 def initialize(dll_directories = _default_dll_directories):
     global _openni2_initialized
-    global dll_directory
+    global loaded_dll_directory
     if _openni2_initialized:
-        raise InitializationError("OpenNI2 already initialized")
+        return
+        #raise InitializationError("OpenNI2 already initialized")
     if isinstance(dll_directories, str):
         dll_directories = [dll_directories]
-    
+    if loaded_dll_directory:
+        c_api.oniInitialize(c_api.ONI_API_VERSION)
+        return
+
     found = False
     prev = os.getcwd()
     exceptions = []
+    dll_directories = [os.path.normpath(os.path.abspath(d)) for d in dll_directories]
     
     for dlldir in dll_directories:
         if not os.path.isdir(dlldir):
             exceptions.append((dlldir, "Directory does not exist"))
             continue
+        fullpath = os.path.join(dlldir, _dll_name)
+        if not os.path.isfile(fullpath):
+            exceptions.append((fullpath, "file does not exist"))
+            continue
         try:
             os.chdir(dlldir)
-            c_api.load_dll("OpenNI2")
+            c_api.load_dll(fullpath)
             c_api.oniInitialize(c_api.ONI_API_VERSION)
         except Exception as ex:
-            exceptions.append((dlldir, ex))
+            exceptions.append((fullpath, ex))
         else:
             found = True
-            dll_directory = dlldir
+            loaded_dll_directory = dlldir
             break
+    
     os.chdir(prev)
     if not found:
         raise InitializationError("OpenNI2 could not be loaded:\n    %s" % 
@@ -79,10 +110,10 @@ def unload():
     if not _openni2_initialized:
         return
     _openni2_initialized = False
-    for coll in [_registered_video_frames, _registered_recorders, _registered_video_streams, _registered_devices]:
-        for hndl in coll:
-            hndl.close()
-        coll.clear()
+    #for coll in [_registered_video_frames, _registered_recorders, _registered_video_streams, _registered_devices]:
+    #    for hndl in coll:
+    #        hndl.close()
+    #    coll.clear()
     c_api.oniShutdown()
 
 atexit.register(unload)
@@ -99,7 +130,14 @@ def wait_for_any_stream(streams, timeout = None):
     arr = (c_api.OniStreamHandle * len(streams))()
     for i, s in enumerate(streams):
         arr[i] = s._handle
-    c_api.oniWaitForAnyStream(arr, len(streams), ctypes.byref(ready_stream_index), timeout)
+    try:
+        c_api.oniWaitForAnyStream(arr, len(streams), ctypes.byref(ready_stream_index), timeout)
+    except OpenNIError as ex:
+        if ex.code == c_api.OniStatus.ONI_STATUS_TIME_OUT:
+            # timed out
+            return None
+        else:
+            raise
     if ready_stream_index.value >= 0:
         return streams[ready_stream_index.value]
     else:
@@ -159,7 +197,7 @@ class Device(HandleObject):
         else:
             self.playback = None
         self._sensor_infos = {}
-        _registered_devices.add(self)
+        #_registered_devices.add(self)
 
     @classmethod
     def enumerate_uris(cls):
@@ -183,7 +221,8 @@ class Device(HandleObject):
         return cls(filename)
 
     def _close(self):
-        c_api.oniDeviceClose(self._handle)
+        if is_initialized():
+            c_api.oniDeviceClose(self._handle)
         self.playback = None
 
     def get_device_info(self):
@@ -205,17 +244,20 @@ class Device(HandleObject):
     def has_sensor(self, sensor_type):
         return self.get_sensor_info(sensor_type) is not None
 
-    def get_depth_stream(self):
+    def create_stream(self, sensor_type):
+        return VideoMode(self, sensor_type)
+
+    def create_depth_stream(self):
         if not self.has_sensor(SENSOR_DEPTH):
             return None
         return VideoStream(self, SENSOR_DEPTH)
 
-    def get_color_stream(self):
+    def create_color_stream(self):
         if not self.has_sensor(SENSOR_COLOR):
             return None
         return VideoStream(self, SENSOR_COLOR)
 
-    def get_ir_stream(self):
+    def create_ir_stream(self):
         if not self.has_sensor(SENSOR_IR):
             return None
         return VideoStream(self, SENSOR_IR)
@@ -261,20 +303,28 @@ class Device(HandleObject):
             c_api.oniDeviceDisableDepthColorSync(self._handle)
     depth_color_sync = property(get_depth_color_sync_enabled, set_depth_color_sync_enabled)
 
-
 @inherit_properties(c_api.OniFrame, "_frame")
 class VideoFrame(HandleObject):
     def __init__(self, pframe):
         self._frame = pframe[0]
         c_api.oniFrameAddRef(pframe)
         HandleObject.__init__(self, pframe)
-        _registered_video_frames.add(self)
+        #_registered_video_frames.add(self)
     def _close(self):
-        c_api.oniFrameRelease(self._handle)
+        if is_initialized():
+            c_api.oniFrameRelease(self._handle)
         self._frame = ClosedHandle
     
-    def get_buffer(self):
-        return (ctypes.c_uint8 * self.dataSize).from_address(self.data)
+    def get_buffer_as(self, ctype):
+        return (ctype * int(self.dataSize / ctypes.sizeof(ctype))).from_address(self.data)
+    
+    def get_buffer_as_uint8(self):
+        return self.get_buffer_as(ctypes.c_uint8)
+    def get_buffer_as_uint16(self):
+        return self.get_buffer_as(ctypes.c_uint16)
+    def get_buffer_as_triplet(self):
+        return self.get_buffer_as(ctypes.c_uint8 * 3)
+
 
 class CameraSettings(object):
     __slots__ = ["stream"]
@@ -320,7 +370,7 @@ class VideoStream(HandleObject):
         handle = c_api.OniStreamHandle()
         c_api.oniDeviceCreateStream(self.device._handle, sensor_type, ctypes.byref(handle))
         HandleObject.__init__(self, handle)
-        _registered_video_streams.add(self)
+        #_registered_video_streams.add(self)
         if (self.is_property_supported(c_api.ONI_STREAM_PROPERTY_AUTO_WHITE_BALANCE) and 
                 self.is_property_supported(c_api.ONI_STREAM_PROPERTY_AUTO_EXPOSURE)):
             self.camera = CameraSettings(self)
@@ -328,8 +378,9 @@ class VideoStream(HandleObject):
             self.camera = None
     
     def _close(self):
-        self.unregister_all_new_frame_listeners()
-        c_api.oniStreamDestroy(self._handle)
+        if is_initialized():
+            self.unregister_all_new_frame_listeners()
+            c_api.oniStreamDestroy(self._handle)
         self.camera = None
     
     def get_sensor_info(self):
@@ -462,10 +513,11 @@ class Recorder(HandleObject):
         handle = c_api.OniRecorderHandle()
         c_api.oniCreateRecorder(filename, ctypes.byref(handle))
         HandleObject.__init__(self, handle)
-        _registered_recorders.add(self)
+        #_registered_recorders.add(self)
         
     def _close(self):
-        c_api.oniRecorderDestroy(ctypes.byref(self._handle))
+        if is_initialized():
+            c_api.oniRecorderDestroy(ctypes.byref(self._handle))
     
     def attach(self, stream, allow_lossy_compression = False):
         c_api.oniRecorderAttachStream(self._handle, stream._handle, allow_lossy_compression)
