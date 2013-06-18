@@ -40,14 +40,14 @@ typedef int OniBool;
 struct OniCallbackHandleImpl;
 typedef struct OniCallbackHandleImpl* OniCallbackHandle;
 
-/** Holds an OpenNI version number, which consists of four separate numbers in the format: @c major.minor.maintenance.build. For example: 2.0.0.20. */	\
+/** Holds an OpenNI version number, which consists of four separate numbers in the format: @c major.minor.maintenance.build. For example: 2.0.0.20. */
 typedef struct
 {
 	/** Major version number, incremented for major API restructuring. */
 	int major;
-	/** Minor version number, incremented when signficant new features added. */
+	/** Minor version number, incremented when significant new features added. */
 	int minor;
-	/** Mainenance build number, incremented for new releases that primarily provide minor bug fixes. */
+	/** Maintenance build number, incremented for new releases that primarily provide minor bug fixes. */
 	int maintenance;
 	/** Build number. Incremented for each new API build. Generally not shown on the installer and download site. */
 	int build;
@@ -90,7 +90,6 @@ typedef struct _OniStream* OniStreamHandle;
 
 struct _OniRecorder;
 typedef struct _OniRecorder* OniRecorderHandle;
-
 
 /** All information of the current frame */
 typedef struct

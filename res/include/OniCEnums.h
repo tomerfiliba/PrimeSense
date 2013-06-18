@@ -75,10 +75,10 @@ typedef enum
 	ONI_IMAGE_REGISTRATION_DEPTH_TO_COLOR	= 1,
 } OniImageRegistrationMode;
 
-enum {
+enum
+{
 	ONI_TIMEOUT_NONE = 0,
-	ONI_TIMEOUT_FOREVER = -1
+	ONI_TIMEOUT_FOREVER = -1,
 };
-
 
 #endif // _ONI_C_ENUMS_H_

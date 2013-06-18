@@ -17,7 +17,7 @@ class Nite2Builder(CBindings):
             "uint16_t", "uint32_t", "uint64_t"]
     
     def filter_func(self, func):
-        return not func.name.lower().startswith("oni")
+        return not func.name.startswith("Oni")
 
     def emit_prelude(self, m):
         #copy("../cbinder/lib.py", "../primelib/cbinder_lib.py")

@@ -36,13 +36,51 @@ namespace openni
 
 /** Pixel type used to store depth images. */
 typedef uint16_t				DepthPixel;
+
 /** Pixel type used to store IR images. */
 typedef uint16_t				Grayscale16Pixel;
 
 // structs
-_ONI_DECLARE_VERSION(Version);
-_ONI_DECLARE_RGB888_PIXEL(RGB888Pixel);
-_ONI_DECLARE_YUV422_PIXEL(YUV422DoublePixel);
+/** Holds an OpenNI version number, which consists of four separate numbers in the format: @c major.minor.maintenance.build. For example: 2.0.0.20. */
+typedef struct
+{
+	/** Major version number, incremented for major API restructuring. */
+	int major;
+	/** Minor version number, incremented when significant new features added. */
+	int minor;
+	/** Maintenance build number, incremented for new releases that primarily provide minor bug fixes. */
+	int maintenance;
+	/** Build number. Incremented for each new API build. Generally not shown on the installer and download site. */
+	int build;
+} Version;
+
+/** Holds the value of a single color image pixel in 24-bit RGB format. */
+typedef struct
+{
+	/* Red value of this pixel. */
+	uint8_t r;
+	/* Green value of this pixel. */
+	uint8_t g;
+	/* Blue value of this pixel. */
+	uint8_t b;
+} RGB888Pixel;
+
+/**
+ Holds the value of two pixels in YUV422 format (Luminance/Chrominance,16-bits/pixel).
+ The first pixel has the values y1, u, v.
+ The second pixel has the values y2, u, v.
+*/
+typedef struct
+{
+	/** First chrominance value for two pixels, stored as blue luminance difference signal. */
+	uint8_t u;
+	/** Overall luminance value of first pixel. */
+	uint8_t y1;
+	/** Second chrominance value for two pixels, stored as red luminance difference signal. */
+	uint8_t v;
+	/** Overall luminance value of second pixel. */
+	uint8_t y2;
+} YUV422DoublePixel;
 
 /** This special URI can be passed to @ref Device::open() when the application has no concern for a specific device. */
 #if ONI_PLATFORM != ONI_PLATFORM_WIN32
@@ -1580,6 +1618,9 @@ public:
 		return oniDeviceIsCommandSupported(m_device, commandId) == TRUE;
 	}
 
+	/** @internal **/
+	inline Status _openEx(const char* uri, const char* mode);
+
 private:
 	Device(const Device&);
 	Device& operator=(const Device&);
@@ -1592,21 +1633,7 @@ private:
 		}
 	}
 
-	Status _setHandle(OniDeviceHandle deviceHandle)
-	{
-		if (m_device == NULL)
-		{
-			m_device = deviceHandle;
-
-			clearSensors();
-
-			oniDeviceGetInfo(m_device, &m_deviceInfo);
-			// Read deviceInfo
-			return STATUS_OK;
-		}
-
-		return STATUS_OUT_OF_FLOW;
-	}
+	inline Status _setHandle(OniDeviceHandle deviceHandle);
 
 private:
 	PlaybackControl* m_pPlaybackControl;
@@ -2086,14 +2113,13 @@ public:
 	*/
 	static Version getVersion()
 	{
-		OniVersion version = oniGetVersion();
-		union
-		{
-			OniVersion* pC;
-			Version* pCpp;
-		} a;
-		a.pC = &version;
-		return *a.pCpp;
+		OniVersion oniVersion = oniGetVersion();
+		Version version;
+		version.major = oniVersion.major;
+		version.minor = oniVersion.minor;
+		version.maintenance = oniVersion.maintenance;
+		version.build = oniVersion.build;
+		return version;
 	}
 
 	/**
@@ -2238,6 +2264,90 @@ public:
 		oniUnregisterDeviceCallbacks(pListener->m_deviceStateChangedCallbacksHandle);
 		pListener->m_deviceStateChangedCallbacksHandle = NULL;
 	}
+
+	/** 
+	 * Change the log output folder
+	
+	 * @param	const char * strLogOutputFolder	[in]	log required folder
+	 *
+	 * @retval STATUS_OK Upon successful completion.
+	 * @retval STATUS_ERROR Upon any kind of failure.
+	 */
+	static Status setLogOutputFolder(const char *strLogOutputFolder)
+	{
+		return (Status)oniSetLogOutputFolder(strLogOutputFolder);
+	}
+
+	/** 
+	 * Get current log file name
+	
+	 * @param	char * strFileName	[out]	returned file name buffer
+	 * @param	int	nBufferSize	[in]	Buffer size
+	 *
+	 * @retval STATUS_OK Upon successful completion.
+	 * @retval STATUS_ERROR Upon any kind of failure.
+	 */
+	static Status getLogFileName(char *strFileName, int nBufferSize)
+	{
+		return (Status)oniGetLogFileName(strFileName, nBufferSize);
+	}
+
+	/** 
+	 * Set minimum severity for log produce
+	
+	 * @param	const char * strMask	[in]	Logger name
+	 * @param	int nMinSeverity	[in]	Logger severity
+	 *
+	 * @retval STATUS_OK Upon successful completion.
+	 * @retval STATUS_ERROR Upon any kind of failure.
+	 */
+	static Status setLogMinSeverity(int nMinSeverity)
+	{
+		return(Status) oniSetLogMinSeverity(nMinSeverity);
+	}
+	
+	/** 
+	* Configures if log entries will be printed to console.
+
+	* @param	const OniBool bConsoleOutput	[in]	TRUE to print log entries to console, FALSE otherwise.
+	*
+	* @retval STATUS_OK Upon successful completion.
+	* @retval STATUS_ERROR Upon any kind of failure.
+	 */
+	static Status setLogConsoleOutput(bool bConsoleOutput)
+	{
+		return (Status)oniSetLogConsoleOutput(bConsoleOutput);
+	}
+
+	/** 
+	* Configures if log entries will be printed to file.
+
+	* @param	const OniBool bConsoleOutput	[in]	TRUE to print log entries to file, FALSE otherwise.
+	*
+	* @retval STATUS_OK Upon successful completion.
+	* @retval STATUS_ERROR Upon any kind of failure.
+	 */
+	static Status setLogFileOutput(bool bFileOutput)
+	{
+		return (Status)oniSetLogFileOutput(bFileOutput);
+	}
+
+	#if ONI_PLATFORM == ONI_PLATFORM_ANDROID_ARM
+	/** 
+	 * Configures if log entries will be printed to the Android log.
+
+	 * @param	OniBool bAndroidOutput bAndroidOutput	[in]	TRUE to print log entries to the Android log, FALSE otherwise.
+	 *
+	 * @retval STATUS_OK Upon successful completion.
+	 * @retval STATUS_ERROR Upon any kind of failure.
+	 */
+	
+	static Status setLogAndroidOutput(bool bAndroidOutput)
+	{
+		return (Status)oniSetLogAndroidOutput(bAndroidOutput);
+	}
+	#endif
+	
 private:
 	OpenNI()
 	{
@@ -2566,12 +2676,53 @@ Status Device::open(const char* uri)
 
 	_setHandle(deviceHandle);
 
-	if (isFile())
+	return STATUS_OK;
+}
+
+Status Device::_openEx(const char* uri, const char* mode)
+{
+	//If we are not the owners, we stick with our own device
+	if(!m_isOwner)
 	{
-		m_pPlaybackControl = new PlaybackControl(this);
+		if(isValid()){
+			return STATUS_OK;
+		}else{
+			return STATUS_OUT_OF_FLOW;
+		}
 	}
 
+	OniDeviceHandle deviceHandle;
+	Status rc = (Status)oniDeviceOpenEx(uri, mode, &deviceHandle);
+	if (rc != STATUS_OK)
+	{
+		return rc;
+	}
+
+	_setHandle(deviceHandle);
+
 	return STATUS_OK;
+}
+
+Status Device::_setHandle(OniDeviceHandle deviceHandle)
+{
+	if (m_device == NULL)
+	{
+		m_device = deviceHandle;
+
+		clearSensors();
+
+		oniDeviceGetInfo(m_device, &m_deviceInfo);
+
+		if (isFile())
+		{
+			m_pPlaybackControl = new PlaybackControl(this);
+		}
+
+		// Read deviceInfo
+		return STATUS_OK;
+	}
+
+	return STATUS_OUT_OF_FLOW;
 }
 
 void Device::close()
