@@ -1,3 +1,5 @@
+# pylint: disable=W0212,W0603
+
 import sys
 import os
 import ctypes
@@ -58,18 +60,18 @@ def initialize(dll_directories = _default_dll_directories):
     global loaded_dll_directory
     if _openni2_initialized:
         return
-        #raise InitializationError("OpenNI2 already initialized")
     if isinstance(dll_directories, str):
         dll_directories = [dll_directories]
     if loaded_dll_directory:
         c_api.oniInitialize(c_api.ONI_API_VERSION)
+        _openni2_initialized = True
         return
 
     found = False
     prev = os.getcwd()
     exceptions = []
     dll_directories = [os.path.normpath(os.path.abspath(d)) for d in dll_directories]
-    
+
     for dlldir in dll_directories:
         if not os.path.isdir(dlldir):
             exceptions.append((dlldir, "Directory does not exist"))
@@ -88,10 +90,10 @@ def initialize(dll_directories = _default_dll_directories):
             found = True
             loaded_dll_directory = dlldir
             break
-    
+
     os.chdir(prev)
     if not found:
-        raise InitializationError("OpenNI2 could not be loaded:\n    %s" % 
+        raise InitializationError("OpenNI2 could not be loaded:\n    %s" %
             ("\n    ".join("%s: %s" % (dir, ex) for dir, ex in exceptions)),)
 
     _openni2_initialized = True
@@ -104,16 +106,19 @@ _registered_devices = weakref.WeakSet()
 _registered_video_frames = weakref.WeakSet()
 _registered_video_streams = weakref.WeakSet()
 _registered_recorders = weakref.WeakSet()
+_registered_device_listeners = weakref.WeakSet()
 
 def unload():
     global _openni2_initialized
     if not _openni2_initialized:
         return
+    for coll in [_registered_video_frames, _registered_recorders, _registered_video_streams, _registered_device_listeners,
+            _registered_devices]:
+        for hndl in coll:
+            hndl.close()
+        coll.clear()
+
     _openni2_initialized = False
-    #for coll in [_registered_video_frames, _registered_recorders, _registered_video_streams, _registered_devices]:
-    #    for hndl in coll:
-    #        hndl.close()
-    #    coll.clear()
     c_api.oniShutdown()
 
 atexit.register(unload)
@@ -176,7 +181,7 @@ class PlaybackSupport(object):
     def get_repeat_enabled(self):
         return bool(self.device.get_property(c_api.ONI_DEVICE_PROPERTY_PLAYBACK_REPEAT_ENABLED, c_api.OniBool))
     def set_repeat_enabled(self, enable):
-        self.device.set_property(c_api.ONI_DEVICE_PROPERTY_PLAYBACK_REPEAT_ENABLED, c_api.OniBool)
+        self.device.set_property(c_api.ONI_DEVICE_PROPERTY_PLAYBACK_REPEAT_ENABLED, enable)
     repeat = property(get_repeat_enabled, set_repeat_enabled)
 
     def seek(self, stream, frame_index):
@@ -197,7 +202,7 @@ class Device(HandleObject):
         else:
             self.playback = None
         self._sensor_infos = {}
-        #_registered_devices.add(self)
+        _registered_devices.add(self)
 
     @classmethod
     def enumerate_uris(cls):
@@ -215,7 +220,7 @@ class Device(HandleObject):
     @classmethod
     def open_any(cls):
         return cls(None)
-    
+
     @classmethod
     def open_file(cls, filename):
         return cls(filename)
@@ -236,11 +241,11 @@ class Device(HandleObject):
     def get_sensor_info(self, sensor_type):
         if sensor_type in self._sensor_infos:
             return self._sensor_infos[sensor_type]
-        
+
         info = SensorInfo.from_device_handle(self._handle, sensor_type)
         self._sensor_infos[sensor_type] = info
         return info
-    
+
     def has_sensor(self, sensor_type):
         return self.get_sensor_info(sensor_type) is not None
 
@@ -309,15 +314,15 @@ class VideoFrame(HandleObject):
         self._frame = pframe[0]
         c_api.oniFrameAddRef(pframe)
         HandleObject.__init__(self, pframe)
-        #_registered_video_frames.add(self)
+        _registered_video_frames.add(self)
     def _close(self):
         if is_initialized():
             c_api.oniFrameRelease(self._handle)
         self._frame = ClosedHandle
-    
+
     def get_buffer_as(self, ctype):
         return (ctype * int(self.dataSize / ctypes.sizeof(ctype))).from_address(self.data)
-    
+
     def get_buffer_as_uint8(self):
         return self.get_buffer_as(ctypes.c_uint8)
     def get_buffer_as_uint16(self):
@@ -330,7 +335,7 @@ class CameraSettings(object):
     __slots__ = ["stream"]
     def __init__(self, stream):
         self.stream = weakref.proxy(stream)
-    
+
     def get_auto_exposure(self):
         return bool(self.stream.get_property(c_api.ONI_STREAM_PROPERTY_AUTO_EXPOSURE, c_api.OniBool))
     def set_auto_exposure(self, enabled):
@@ -370,19 +375,19 @@ class VideoStream(HandleObject):
         handle = c_api.OniStreamHandle()
         c_api.oniDeviceCreateStream(self.device._handle, sensor_type, ctypes.byref(handle))
         HandleObject.__init__(self, handle)
-        #_registered_video_streams.add(self)
-        if (self.is_property_supported(c_api.ONI_STREAM_PROPERTY_AUTO_WHITE_BALANCE) and 
+        _registered_video_streams.add(self)
+        if (self.is_property_supported(c_api.ONI_STREAM_PROPERTY_AUTO_WHITE_BALANCE) and
                 self.is_property_supported(c_api.ONI_STREAM_PROPERTY_AUTO_EXPOSURE)):
             self.camera = CameraSettings(self)
         else:
             self.camera = None
-    
+
     def _close(self):
         if is_initialized():
             self.unregister_all_new_frame_listeners()
             c_api.oniStreamDestroy(self._handle)
         self.camera = None
-    
+
     def get_sensor_info(self):
         return SensorInfo.from_stream_handle(self._handle)
 
@@ -390,35 +395,35 @@ class VideoStream(HandleObject):
         rec = Recorder(filename)
         rec.attach(self, allow_lossy_compression)
         return rec
-    
+
     def start(self):
         c_api.oniStreamStart(self._handle)
     def stop(self):
         c_api.oniStreamStop(self._handle)
-    
+
     def read_frame(self):
         pframe = ctypes.POINTER(c_api.OniFrame)()
         c_api.oniStreamReadFrame(self._handle, ctypes.byref(pframe))
         return VideoFrame(pframe)
-    
+
     def register_new_frame_listener(self, callback):
         """callback(stream : VideoStream) -> None"""
         if callback in self._callbacks:
             raise ValueError("Callback %r already registered" % (callback,))
         def adapter(handle, cookie):
             callback(self)
-        
+
         cb_handle = c_api.OniCallbackHandle()
         cbobj = c_api.OniNewFrameCallback(adapter)
         self._callbacks[callback] = (cb_handle, adapter, cbobj)
         c_api.oniStreamRegisterNewFrameCallback(self._handle, cbobj, None, ctypes.byref(cb_handle))
-    
+
     def unregister_new_frame_listener(self, callback):
         if callback not in self._callbacks:
             return
-        cb_handle, _, _ = self._callbacks[callback]
+        cb_handle, _, _ = self._callbacks.pop(callback)
         c_api.oniStreamUnregisterNewFrameCallback(self._handle, cb_handle)
-    
+
     def unregister_all_new_frame_listeners(self):
         for cb_handle, _, _ in self._callbacks.values():
             c_api.oniStreamUnregisterNewFrameCallback(self._handle, cb_handle)
@@ -452,7 +457,7 @@ class VideoStream(HandleObject):
     def set_video_mode(self, video_mode):
         self.set_property(c_api.ONI_STREAM_PROPERTY_VIDEO_MODE, video_mode)
     video_mode = property(get_video_mode, set_video_mode)
-    
+
     def get_max_pixel_value(self):
         return self.get_int_property(c_api.ONI_STREAM_PROPERTY_MAX_VALUE)
     def get_min_pixel_value(self):
@@ -466,7 +471,7 @@ class VideoStream(HandleObject):
         cropping = c_api.OniCropping(enabled = True, originX = originX, originY = originY, width = width, height = height)
         self.set_property(c_api.ONI_STREAM_PROPERTY_CROPPING, cropping)
     cropping = property(get_property, set_property)
-    
+
     def reset_cropping(self):
         self.set_property(c_api.ONI_STREAM_PROPERTY_CROPPING, c_api.OniCropping(enabled = False))
 
@@ -475,7 +480,7 @@ class VideoStream(HandleObject):
     def set_mirroring_enabled(self, enabled):
         self.set_property(c_api.ONI_STREAM_PROPERTY_MIRRORING, enabled)
     mirroring_enabled = property(get_mirroring_enabled, set_mirroring_enabled)
-    
+
     def get_horizontal_fov(self):
         return self.get_property(c_api.ONI_STREAM_PROPERTY_HORIZONTAL_FOV, ctypes.c_float).value
     def get_vertical_fov(self):
@@ -488,24 +493,24 @@ class VideoStream(HandleObject):
         if not allocator:
             c_api.oniStreamSetFrameBuffersAllocator(self._handle, None, None, None)
         else:
-            return c_api.oniStreamSetFrameBuffersAllocator(self._handle, 
-                allocator._allocate_frame_buffer_callback, allocator._free_frame_buffer_callback, None)
+            return c_api.oniStreamSetFrameBuffersAllocator(self._handle,
+                allocator._allocate_callback, allocator._free_callback, None)
 
 class FrameAllocator(object):
     def __init__(self):
         # keep reference to the methods (they are passed as callbacks)
-        self._allocate_frame_buffer_callback = self._allocate_frame_buffer_callback
-        self._free_frame_buffer_callback = self._free_frame_buffer_callback
-    
-    def allocate_frame_buffer_callback(self, size):
+        self._alloc_callback = c_api.OniFrameAllocBufferCallback(self._allocate_frame_buffer_callback)
+        self._free_callback = c_api.OniFrameFreeBufferCallback(self._free_frame_buffer_callback)
+
+    def allocate_frame_buffer(self, size):
         raise NotImplementedError()
-    def free_frame_buffer_callback(self, pdata):
+    def free_frame_buffer(self, pdata):
         raise NotImplementedError()
 
-    def _allocate_frame_buffer_callback(self, size, cookie):
-        return self.allocate_frame_buffer_callback(size) 
-    def _free_frame_buffer_callback(self, pdata, cookie):
-        return self.free_frame_buffer_callback(pdata)
+    def _allocate_frame_buffer_callback(self, size, _):
+        return self.allocate_frame_buffer(size)
+    def _free_frame_buffer_callback(self, pdata, _):
+        return self.free_frame_buffer(pdata)
 
 class Recorder(HandleObject):
     def __init__(self, filename):
@@ -513,12 +518,12 @@ class Recorder(HandleObject):
         handle = c_api.OniRecorderHandle()
         c_api.oniCreateRecorder(filename, ctypes.byref(handle))
         HandleObject.__init__(self, handle)
-        #_registered_recorders.add(self)
-        
+        _registered_recorders.add(self)
+
     def _close(self):
         if is_initialized():
             c_api.oniRecorderDestroy(ctypes.byref(self._handle))
-    
+
     def attach(self, stream, allow_lossy_compression = False):
         c_api.oniRecorderAttachStream(self._handle, stream._handle, allow_lossy_compression)
     def start(self):
@@ -532,16 +537,16 @@ def convert_world_to_depth(depthStream, worldX, worldY, worldZ):
     depthX = ctypes.c_float()
     depthY = ctypes.c_float()
     depthZ = ctypes.c_float()
-    c_api.oniCoordinateConverterWorldToDepth(depthStream._handle, worldX, worldY, worldZ, 
+    c_api.oniCoordinateConverterWorldToDepth(depthStream._handle, worldX, worldY, worldZ,
         ctypes.byref(depthX), ctypes.byref(depthY), ctypes.byref(depthZ))
-    return depthX.value, depthY.value, depthZ.value 
+    return depthX.value, depthY.value, depthZ.value
 
 def convert_depth_to_world(depthStream, depthX, depthY, depthZ):
     """const VideoStream& depthStream, float depthX, float depthY, float depthZ, float* pWorldX, float* pWorldY, float* pWorldZ"""
     depthX = ctypes.c_float()
     depthY = ctypes.c_float()
     depthZ = ctypes.c_float()
-    c_api.oniCoordinateConverterDepthToWorld(depthStream._handle, depthX, depthY, depthZ, 
+    c_api.oniCoordinateConverterDepthToWorld(depthStream._handle, depthX, depthY, depthZ,
         ctypes.byref(depthX), ctypes.byref(depthY), ctypes.byref(depthZ))
     return depthX.value, depthY.value, depthZ.value
 
@@ -549,22 +554,53 @@ def convert_depth_to_color(depthStream, colorStream, depthX, depthY, depthZ):
     """const VideoStream& depthStream, const VideoStream& colorStream, int depthX, int depthY, DepthPixel depthZ, int* pColorX, int* pColorY"""
     colorX = ctypes.c_int()
     colorY = ctypes.c_int()
-    c_api.oniCoordinateConverterDepthToColor(depthStream._handle, colorStream._handle, depthX, depthY, depthZ, 
-        ctypes.byref(colorX), ctypes.byref(colorY));
+    c_api.oniCoordinateConverterDepthToColor(depthStream._handle, colorStream._handle, depthX, depthY, depthZ,
+        ctypes.byref(colorX), ctypes.byref(colorY))
     return colorX.value, colorY.value
 
 def get_bytes_per_pixel(format):
     c_api.oniFormatBytesPerPixel(format)
 
-class DeviceListener(object):
-    _handle = None
-    def _on_connected(self, pdevinfo, cookie):
-        self.on_connected(pdevinfo[0])
-    def _on_disconnected(self, pdevinfo, cookie):
-        self.on_disconnected(pdevinfo[0])
-    def _on_state_changed(self, pdevinfo, state, cookie):
-        self.on_state_changed(pdevinfo[0], state)
+class DeviceListener(HandleObject):
+    def __init__(self):
+        handle = c_api.OniCallbackHandle()
+        self._callbacks = c_api.OniDeviceCallbacks(
+            deviceConnected = c_api.OniDeviceInfoCallback(self._on_connected),
+            deviceDisconnected = c_api.OniDeviceInfoCallback(self._on_disconnected),
+            deviceStateChanged = c_api.OniDeviceStateCallback(self._on_state_changed),
+        )
+        c_api.oniRegisterDeviceCallbacks(self._callbacks, None, ctypes.byref(handle))
+        HandleObject.__init__(self, handle)
+        _registered_device_listeners.add(self)
+        self._connected_uris = set()
+        self._disconnected_uris = set()
+
+    def _close(self):
+        if is_initialized():
+            c_api.oniUnregisterDeviceCallbacks(self._handle)
+
+    def unregister(self):
+        self.close()
+
+    def _on_connected(self, pdevinfo, _):
+        devinfo = pdevinfo[0]
+        self._disconnected_uris.discard(devinfo.uri)
+        if devinfo.uri in self._connected_uris:
+            return
+        self._connected_uris.add(devinfo.uri)
+        self.on_connected(devinfo)
     
+    def _on_disconnected(self, pdevinfo, _):
+        devinfo = pdevinfo[0]
+        self._connected_uris.discard(devinfo.uri)
+        if devinfo.uri in self._disconnected_uris:
+            return
+        self._disconnected_uris.add(devinfo.uri)
+        self.on_disconnected(devinfo)
+    
+    def _on_state_changed(self, pdevinfo, state, _):
+        self.on_state_changed(pdevinfo[0], state)
+
     def on_connected(self, devinfo):
         """Implement me"""
         pass
@@ -574,34 +610,6 @@ class DeviceListener(object):
     def on_state_changed(self, devinfo, state):
         """Implement me"""
         pass
-    
-    def _register(self):
-        if self._handle is not None:
-            raise ValueError("This listener instance is already registered")
-        self._handle = c_api.OniCallbackHandle()
-        self._callbacks = c_api.OniDeviceCallbacks(
-            deviceConnected = c_api.OniDeviceInfoCallback(self._on_connected),
-            deviceDisconnected = c_api.OniDeviceInfoCallback(self._on_disconnected),
-            deviceStateChanged = c_api.OniDeviceStateCallback(self._on_state_changed),
-        )
-        c_api.oniRegisterDeviceCallbacks(self._callbacks, None, ctypes.byref(self._handle))
-    
-    def _unregister(self):
-        if self._handle is not None:
-            c_api.oniUnregisterDeviceCallbacks(self._handle)
-            self._handle = None
-
-
-def register_device_listener(listener):
-    listener._register()
-def unregister_device_listener(listener):
-    listener._unregister()
-    
-
-
-
-
-
 
 
 

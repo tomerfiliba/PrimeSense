@@ -1,3 +1,5 @@
+# pylint: disable=W0212,W0603
+
 import sys
 import os
 import weakref
@@ -38,7 +40,6 @@ def initialize(dll_directories = _default_dll_directories):
     global loaded_dll_directory
     if _nite2_initialized:
         return
-        #raise InitializationError("NiTE2 already initialized")
     if isinstance(dll_directories, str):
         dll_directories = [dll_directories]
         
@@ -47,6 +48,7 @@ def initialize(dll_directories = _default_dll_directories):
 
     if loaded_dll_directory:
         c_api.niteInitialize()
+        _nite2_initialized = True
         return
     
     found = False
@@ -87,16 +89,20 @@ _registered_user_trackers = weakref.WeakSet()
 _registered_user_tracker_frames = weakref.WeakSet() 
 _registered_hand_trackers = weakref.WeakSet()
 _registered_hand_tracker_frames = weakref.WeakSet()
+_registered_user_tracker_listeners = weakref.WeakSet()
+_registered_hand_tracker_listeners = weakref.WeakSet()
 
 def unload():
     global _nite2_initialized
     if not _nite2_initialized:
         return
+    for coll in [_registered_user_tracker_frames, _registered_hand_tracker_frames, _registered_hand_trackers, 
+            _registered_user_trackers, _registered_user_tracker_listeners, _registered_hand_tracker_listeners]:
+        for hndl in coll:
+            hndl.close()
+        coll.clear()
+    
     _nite2_initialized = False
-    #for coll in [_registered_user_tracker_frames, _registered_hand_tracker_frames, _registered_hand_trackers, _registered_user_trackers]:
-    #    for hndl in coll:
-    #        hndl.close()
-    #    coll.clear()
     c_api.niteShutdown()
 
 atexit.register(unload)
@@ -130,8 +136,8 @@ class Skeleton(object):
     __slots__ = ["_skeleton"]
     def __init__(self, skeleton):
         self._skeleton = skeleton
-    def get_joint(self, joint_type):
-        return self.joints[type]
+    def get_joint(self, jointtype):
+        return self.joints[jointtype]
 
 @inherit_properties(c_api.NiteUserData, "_userdata")
 class UserData(object):
@@ -162,7 +168,7 @@ class UserTrackerFrame(HandleObject):
             u = UserData(self.pUser[i])
             self.users.append(u)
             self.users_by_id[u.id] = u
-        #_registered_user_tracker_frames.add(self)
+        _registered_user_tracker_frames.add(self)
     
     def _close(self):
         if is_initialized():
@@ -185,15 +191,15 @@ class _NiteDevStruct(ctypes.Structure):
 
 class UserTracker(HandleObject):
     def __init__(self, device):
-        self._devstruct = _NiteDevStruct()
-        self._devstruct.device = device._handle
         handle = c_api.NiteUserTrackerHandle()
         if not device:
             c_api.niteInitializeUserTracker(ctypes.byref(handle))
         else:
+            self._devstruct = _NiteDevStruct()
+            self._devstruct.device = device._handle
             c_api.niteInitializeUserTrackerByDevice(ctypes.byref(self._devstruct), ctypes.byref(handle))
         HandleObject.__init__(self, handle)
-        #_registered_user_trackers.add(self)
+        _registered_user_trackers.add(self)
         
     @classmethod
     def open_any(cls):
@@ -231,11 +237,6 @@ class UserTracker(HandleObject):
     def stop_all_pose_detection(self, userid):
         c_api.niteStopAllPoseDetection(self._handle, userid)
 
-    def add_listener(self, listener):
-        listener._register(self)
-    def remove_listener(self, listener):
-        listener._unregister()
-
     def convert_joint_coordinates_to_depth(self,  x, y, z):
         outX = ctypes.c_float()
         outY = ctypes.c_float()
@@ -247,29 +248,6 @@ class UserTracker(HandleObject):
         outY = ctypes.c_float()
         c_api.niteConvertDepthCoordinatesToJoint(self._handle, x, y, z, ctypes.byref(outX), ctypes.byref(outY))
         return (outX.value, outY.value)
-
-
-class UserTrackerListener(object):
-    def __init__(self):
-        self._callbacks = c_api.NiteUserTrackerCallbacks(readyForNextFrame = self._on_ready_for_next_frame)
-        self._pcallbacks = ctypes.pointer(self._callbacks)
-        self.user_tracker = None
-    
-    def _register(self, user_tracker):
-        if self.user_tracker is not None:
-            raise ValueError("Listener already registered")
-        self.user_tracker = user_tracker
-        c_api.niteRegisterUserTrackerCallbacks(self.user_tracker._handle, self._pcallbacks, None)
-    def _unregister(self):
-        if self.user_tracker is None:
-            raise ValueError("Listener not registered")
-        c_api.niteUnregisterUserTrackerCallbacks(self.user_tracker._handle, self._pcallbacks)
-        self.user_tracker = None
-    
-    def _on_ready_for_next_frame(self, cookie):
-        self.on_ready_for_next_frame()
-    def on_ready_for_next_frame(self):
-        pass
 
 
 @inherit_properties(c_api.NiteGestureData, "_gesture")
@@ -307,7 +285,7 @@ class HandTrackerFrame(HandleObject):
         self._depth_frame = None
         self._hands = None
         self._gestures = None
-        #_registered_hand_tracker_frames.add(self)
+        _registered_hand_tracker_frames.add(self)
     
     def _close(self):
         if is_initialized():
@@ -332,17 +310,21 @@ class HandTrackerFrame(HandleObject):
         return self._gestures
 
 class HandTracker(HandleObject):
-    def __init__(self, device = None):
+    def __init__(self, device):
         self.device = device
-        self._devstruct = _NiteDevStruct()
-        self._devstruct.device = device._handle
         handle = c_api.NiteHandTrackerHandle()
-        if device is None:
+        if not device:
             c_api.niteInitializeHandTracker(ctypes.byref(handle))
         else:
+            self._devstruct = _NiteDevStruct()
+            self._devstruct.device = device._handle
             c_api.niteInitializeHandTrackerByDevice(ctypes.byref(self._devstruct), ctypes.byref(handle))
         HandleObject.__init__(self, handle)
-        #_registered_hand_trackers.add(self)
+        _registered_hand_trackers.add(self)
+    
+    @classmethod
+    def open_any(cls):
+        return cls(None)
     
     def _close(self):
         if is_initialized():
@@ -374,11 +356,6 @@ class HandTracker(HandleObject):
     def stop_hand_tracking(self, handid):
         c_api.niteStopHandTracking(self._handle, handid)
 
-    def add_listener(self, listener):
-        listener._register(self)
-    def remove_listener(self, listener):
-        listener._unregister()
-
     def start_gesture_detection(self, gesture_type):
         c_api.niteStartGestureDetection(self._handle, gesture_type)
     def stop_gesture_detection(self, gesture_type):
@@ -403,29 +380,50 @@ class HandTracker(HandleObject):
         c_api.niteStopAllGestureDetection(self._handle)
 
 
-class HandTrackerListener(object):
-    def __init__(self):
-        self._callbacks = c_api.NiteHandTrackerCallbacks(readyForNextFrame = self._on_ready_for_next_frame)
-        self._pcallbacks = ctypes.pointer(self._callbacks)
-        self.hand_tracker = None
+class UserTrackerListener(HandleObject):
+    def __init__(self, user_tracker):
+        self.user_tracker = user_tracker
+        self._callbacks = c_api.NiteUserTrackerCallbacks(
+            readyForNextFrame = c_api.OniGeneralCallback(self._on_ready_for_next_frame))
+        handle = ctypes.pointer(self._callbacks)
+        c_api.niteRegisterUserTrackerCallbacks(self.user_tracker._handle, handle, None)
+        HandleObject.__init__(self, handle)
+        _registered_user_tracker_listeners.add(self)
     
-    def _register(self, hand_tracker):
-        if self.hand_tracker is not None:
-            raise ValueError("Listener already registered")
-        self.hand_tracker = hand_tracker
-        c_api.niteRegisterHandTrackerCallbacks(self.hand_tracker._handle, self._pcallbacks, None)
-    def _unregister(self):
-        if self.hand_tracker is None:
-            raise ValueError("Listener not registered")
-        c_api.niteUnregisterHandTrackerCallbacks(self.hand_tracker._handle, self._pcallbacks)
-        self.hand_tracker = None
+    def unregister(self):
+        self.close()
     
-    def _on_ready_for_next_frame(self, cookie):
+    def _close(self):
+        if is_initialized():
+            c_api.niteUnregisterUserTrackerCallbacks(self.user_tracker._handle, self._handle)
+            self.user_tracker = None
+    
+    def _on_ready_for_next_frame(self, _):
         self.on_ready_for_next_frame()
     def on_ready_for_next_frame(self):
+        """Implement me"""
         pass
 
-    
 
+class HandTrackerListener(HandleObject):
+    def __init__(self, hand_tracker):
+        self.hand_tracker = hand_tracker
+        self._callbacks = c_api.NiteHandTrackerCallbacks(
+            readyForNextFrame = c_api.OniGeneralCallback(self._on_ready_for_next_frame))
+        handle = ctypes.pointer(self._callbacks)
+        c_api.niteRegisterHandTrackerCallbacks(self.hand_tracker._handle, handle, None)
+        HandleObject.__init__(self, handle)
+        _registered_hand_tracker_listeners.add(self)
+    
+    def _close(self):
+        if is_initialized():
+            c_api.niteUnregisterHandTrackerCallbacks(self.hand_tracker._handle, self._handle)
+            self.hand_tracker = None
+    
+    def _on_ready_for_next_frame(self, _):
+        self.on_ready_for_next_frame()
+    def on_ready_for_next_frame(self):
+        """Implement me"""
+        pass
 
 

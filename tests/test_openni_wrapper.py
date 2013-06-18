@@ -98,26 +98,27 @@ openni2.convert_depth_to_color(depth_stream, color_stream, 30, 40, 50)
 
 ## Callbacks ############################
 
-cb_called = False
+num_of_frames = 0
 def cb(stream):
-    global cb_called
-    cb_called = True
-
+    global num_of_frames
+    num_of_frames += 1
+ 
 print "registering frame listener (wait 3 sec)"
 depth_stream.register_new_frame_listener(cb)
 time.sleep(3)
 print "unregistering frame listener (wait 3 sec)"
 depth_stream.unregister_new_frame_listener(cb)
-assert cb_called
-cb_called = False
+print num_of_frames
+assert num_of_frames > 0
+num_of_frames = 0
 time.sleep(3)
-assert not cb_called
+assert num_of_frames == 0
 
 
 class MyListener(openni2.DeviceListener):
     was_connected = False
     was_disconnected = False
-    
+      
     def on_connected(self, devinfo):
         print "on_connected", devinfo
         self.was_connected = True
@@ -127,19 +128,14 @@ class MyListener(openni2.DeviceListener):
     def on_state_changed(self, devinfo, state):
         print "on_state_changed", devinfo, state
 
-listener = MyListener()
-openni2.register_device_listener(listener)
-print "Remove/add devices (30 sec)"
-time.sleep(30)
-openni2.unregister_device_listener(listener)
+with MyListener() as listener:
+    print "Remove/add devices (15 sec)"
+    time.sleep(15)
 
-#assert listener.was_disconnected
-#assert listener.was_connected
+assert listener.was_disconnected
+assert listener.was_connected
 
-
-ir_stream.stop()
-color_stream.stop()
-depth_stream.stop()
+# everything will be nicely-closed when we unload
 openni2.unload()
 print "all done"
 
