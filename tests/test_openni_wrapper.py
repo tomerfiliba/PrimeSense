@@ -96,6 +96,11 @@ openni2.convert_world_to_depth(depth_stream, 30, 40, 50)
 openni2.convert_depth_to_world(depth_stream, 30, 40, 50)
 openni2.convert_depth_to_color(depth_stream, color_stream, 30, 40, 50)
 
+openni2.get_log_filename()
+openni2.configure_logging(log_directory = ".", log_severity = 0)
+fn = openni2.get_log_filename()
+assert os.path.dirname(fn) == os.getcwd()
+
 ## Callbacks ############################
 
 num_of_frames = 0

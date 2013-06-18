@@ -5,9 +5,10 @@ class InitializationError(Exception):
     pass
 
 class OpenNIError(Exception):
-    def __init__(self, code, message):
+    def __init__(self, code, message, logfile):
         self.code = code
-        Exception.__init__(self, code, message)
+        self.logfile = logfile
+        Exception.__init__(self, code, message, logfile)
 
 class NiteError(Exception):
     def __init__(self, code):

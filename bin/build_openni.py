@@ -60,7 +60,13 @@ class OpenNI2Builder(CBindings):
                     m.stmt("msg = oniGetExtendedError()")
                     with m.if_("not msg"):
                         m.stmt("msg = ''")
-                    m.raise_("OpenNIError(res, msg.strip())")
+                    m.stmt("buf = ctypes.create_string_buffer(1024)")
+                    m.stmt("rc = _oniGetLogFileName(buf, ctypes.sizeof(buf))")
+                    with m.if_("rc == OniStatus.ONI_STATUS_OK"):
+                        m.stmt("logfile = buf.value")
+                    with m.else_():
+                        m.stmt("logfile = None")
+                    m.raise_("OpenNIError(res, msg.strip(), logfile)")
                 m.return_("res")
             m.return_("wrapper")
 

@@ -191,10 +191,13 @@ class PlaybackSupport(object):
         return stream.get_number_of_frames()
 
 class Device(HandleObject):
-    def __init__(self, uri):
+    def __init__(self, uri, mode = None):
         self.uri = uri
         handle = c_api.OniDeviceHandle()
-        c_api.oniDeviceOpen(uri, ctypes.byref(handle))
+        if mode:
+            c_api.oniDeviceOpenEx(uri, mode, ctypes.byref(handle))
+        else:
+            c_api.oniDeviceOpen(uri, ctypes.byref(handle))
         HandleObject.__init__(self, handle)
         self._devinfo = None
         if self.is_file():
@@ -610,6 +613,32 @@ class DeviceListener(HandleObject):
     def on_state_changed(self, devinfo, state):
         """Implement me"""
         pass
+
+def get_log_filename():
+    buf = ctypes.create_string_buffer(1024)
+    try:
+        c_api.oniGetLogFileName(buf, ctypes.sizeof(buf))
+    except OpenNIError:
+        # not logging to file
+        return None
+    else:
+        return buf.value
+
+def configure_logging(log_directory = None, log_severity = None, log_to_console = None):
+    """
+    severity: 0 - Verbose; 1 - Info; 2 - Warning; 3 - Error. Default - None
+    """
+    if log_severity is not None:
+        c_api.oniSetLogMinSeverity(log_severity)
+    
+    if log_to_console is not None:
+        c_api.oniSetLogConsoleOutput(bool(log_to_console))
+    
+    if log_directory is not None:
+        c_api.oniSetLogFileOutput(True)
+        c_api.oniSetLogOutputFolder(log_directory)
+    else:
+        c_api.oniSetLogFileOutput(False)
 
 
 

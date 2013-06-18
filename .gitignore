@@ -31,5 +31,6 @@ nosetests.xml
 
 tmp/
 tmp.c
-
+*.log
 *~
+

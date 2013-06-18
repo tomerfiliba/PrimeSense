@@ -33,6 +33,7 @@ class TestBindings(unittest.TestCase):
         self.check_unexposed_functions(openni2, _openni2, "../res/include/OpenNI.h", ["oniGetExtendedError"])
         self.check_missing_names_by_prefix(openni2, "../res/include/OpenNI.h", "DEVICE_PROPERTY_", "ONI_")
         self.check_missing_names_by_prefix(openni2, "../res/include/OpenNI.h", "STREAM_PROPERTY_", "ONI_")
+        
 
     def _get_identifiers(self, mod):
         source = inspect.getsource(mod)
