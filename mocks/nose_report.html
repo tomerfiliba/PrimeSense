@@ -1,0 +1,130 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <title>Nose Report</title>
+    <style type="text/css">
+body {font-family: arial;}
+*:focus {outline: none;}
+table.results td {vertical-align: top;}
+div.test_suite summary {font-family: monospace; font-weight: bold; padding: 5px;}
+div.test_suite summary.ok {background-color: rgb(139, 248, 66);}
+div.test_suite summary.fail {background-color: rgb(248, 66, 66);}
+div.test_suite {margin-top: 2em; margin-bottom: 1em;}
+div.test_suite span.test_name {font-size: 1.5em;}
+div.test_suite span.test_file {float: right;}
+table.results tr.ok {background-color: #11dd22;}
+table.results tr.fail {background-color: #dddd22;}
+table.results tr.error {background-color: rgb(236, 175, 141);}
+table.results tr.skip {background-color: #dd1122;}
+div.content {margin-right:auto; margin-left:auto; max-width:900px;}
+    </style>
+  </head>
+  <body>
+    <div class="content">
+      <h1>Nose Report</h1>
+      <div class="infobox">
+        <p>
+Started:
+Wed Jun 26 18:51:43 2013
+        </p>
+        <p>
+Ended:
+Wed Jun 26 18:51:43 2013
+        </p>
+        <p>Total of 4 tests, 1 failures, 1 errors</p>
+      </div>
+      <div class="test_suite">
+        <details>
+          <summary class="fail">
+            <span class="test_name">TestFeature1</span>
+            <span class="test_file">Module:  test_feature1</span>
+          </summary>
+          <table class="results" style="width:100%;">
+            <tr>
+              <th style="width:50px;">Status</th>
+              <th>Test</th>
+              <th style="width:100px;">Duration</th>
+            </tr>
+            <tr class="fail">
+              <td>fail</td>
+              <td>
+                <details>
+                  <summary>test_feature1.TestFeature1.test_bar</summary>
+                  <pre>Traceback (most recent call last):
+  File &quot;c:\python27\lib\unittest\case.py&quot;, line 331, in run
+    testMethod()
+  File &quot;c:\python27\lib\site-packages\nose\case.py&quot;, line 197, in runTest
+    self.test(*self.arg)
+  File &quot;c:\workspace\crayola\mocks\test_feature1.py&quot;, line 11, in test_bar
+    assert False
+AssertionError: 
+-------------------- &gt;&gt; begin captured logging &lt;&lt; --------------------
+crayola: INFO: i am bar
+--------------------- &gt;&gt; end captured logging &lt;&lt; ---------------------
+</pre>
+                </details>
+              </td>
+              <td>0.00 sec</td>
+            </tr>
+            <tr class="ok">
+              <td>ok</td>
+              <td>
+                <details>
+                  <summary>test_feature1.TestFeature1.test_foo</summary>
+                  <pre>crayola: INFO: i am foo</pre>
+                </details>
+              </td>
+              <td>0.00 sec</td>
+            </tr>
+          </table>
+        </details>
+      </div>
+      <div class="test_suite">
+        <details>
+          <summary class="fail">
+            <span class="test_name">TestFeature2</span>
+            <span class="test_file">Module:  test_feature2</span>
+          </summary>
+          <table class="results" style="width:100%;">
+            <tr>
+              <th style="width:50px;">Status</th>
+              <th>Test</th>
+              <th style="width:100px;">Duration</th>
+            </tr>
+            <tr class="error">
+              <td>error</td>
+              <td>
+                <details>
+                  <summary>test_feature2.TestFeature2.test_eggs</summary>
+                  <pre>Traceback (most recent call last):
+  File &quot;c:\python27\lib\unittest\case.py&quot;, line 331, in run
+    testMethod()
+  File &quot;c:\python27\lib\site-packages\nose\case.py&quot;, line 197, in runTest
+    self.test(*self.arg)
+  File &quot;c:\workspace\crayola\mocks\test_feature2.py&quot;, line 11, in test_eggs
+    1/0
+ZeroDivisionError: integer division or modulo by zero
+-------------------- &gt;&gt; begin captured logging &lt;&lt; --------------------
+crayola: INFO: i am eggs
+--------------------- &gt;&gt; end captured logging &lt;&lt; ---------------------
+</pre>
+                </details>
+              </td>
+              <td>0.00 sec</td>
+            </tr>
+            <tr class="ok">
+              <td>ok</td>
+              <td>
+                <details>
+                  <summary>test_feature2.TestFeature2.test_spam</summary>
+                  <pre>crayola: INFO: i am spam</pre>
+                </details>
+              </td>
+              <td>0.00 sec</td>
+            </tr>
+          </table>
+        </details>
+      </div>
+    </div>
+  </body>
+</html>
