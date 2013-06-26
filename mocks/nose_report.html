@@ -5,18 +5,20 @@
     <style type="text/css">
 body {font-family: arial;}
 *:focus {outline: none;}
+summary {cursor: pointer;}
 table.results td {vertical-align: top;}
-div.test_suite summary {font-family: monospace; font-weight: bold; padding: 5px;}
+div.test_suite {border: 2px solid #bbb; padding: 5px; border-radius: 5px;}
+div.test_suite summary {padding: 5px;}
 div.test_suite summary.ok {background-color: rgb(139, 248, 66);}
-div.test_suite summary.fail {background-color: rgb(248, 66, 66);}
-div.test_suite {margin-top: 2em; margin-bottom: 1em;}
-div.test_suite span.test_name {font-size: 1.5em;}
+div.test_suite summary.fail {background-color: rgb(236, 175, 141);}
+div.test_suite {margin-top: 2em;}
+div.test_suite span.test_name {font-weight: bold; font-size: 1.5em;}
 div.test_suite span.test_file {float: right;}
-table.results tr.ok {background-color: #11dd22;}
+table.results tr.ok {background-color: rgb(139, 248, 66);}
 table.results tr.fail {background-color: #dddd22;}
 table.results tr.error {background-color: rgb(236, 175, 141);}
 table.results tr.skip {background-color: #dd1122;}
-div.content {margin-right:auto; margin-left:auto; max-width:900px;}
+div.content {margin-right:auto; margin-left:auto; max-width:960px;}
     </style>
   </head>
   <body>
@@ -25,13 +27,23 @@ div.content {margin-right:auto; margin-left:auto; max-width:900px;}
       <div class="infobox">
         <p>
 Started:
-Wed Jun 26 18:51:43 2013
+Thu Jun 27 00:07:38 2013
         </p>
         <p>
 Ended:
-Wed Jun 26 18:51:43 2013
+Thu Jun 27 00:07:38 2013
         </p>
-        <p>Total of 4 tests, 1 failures, 1 errors</p>
+        <p>Total of 6 tests, 1 failures, 1 errors</p>
+        <script type="text/javascript">
+function toggle_expand(){
+                                var all_details = document.getElementsByTagName('details');
+                                
+                                for(var i = 0; i < all_details.length; i++) {
+                                    all_details[i].open = !all_details[i].open;
+                                }
+                            }
+        </script>
+        <p><a onclick="toggle_expand()">Expand</a></p>
       </div>
       <div class="test_suite">
         <details>
@@ -49,9 +61,12 @@ Wed Jun 26 18:51:43 2013
               <td>fail</td>
               <td>
                 <details>
-                  <summary>test_feature1.TestFeature1.test_bar</summary>
+                  <summary>
+                    <strong style="padding-right: 20px;">test_bar</strong>
+(test_feature1.TestFeature1)
+                  </summary>
                   <pre>Traceback (most recent call last):
-  File &quot;c:\python27\lib\unittest\case.py&quot;, line 331, in run
+  File &quot;c:\python27\lib\unittest\case.py&quot;, line 327, in run
     testMethod()
   File &quot;c:\python27\lib\site-packages\nose\case.py&quot;, line 197, in runTest
     self.test(*self.arg)
@@ -70,7 +85,51 @@ crayola: INFO: i am bar
               <td>ok</td>
               <td>
                 <details>
-                  <summary>test_feature1.TestFeature1.test_foo</summary>
+                  <summary>
+                    <strong style="padding-right: 20px;">test_foo</strong>
+(test_feature1.TestFeature1)
+                  </summary>
+                  <pre>crayola: INFO: i am foo</pre>
+                </details>
+              </td>
+              <td>0.00 sec</td>
+            </tr>
+          </table>
+        </details>
+      </div>
+      <div class="test_suite">
+        <details>
+          <summary class="ok">
+            <span class="test_name">TestFeature3</span>
+            <span class="test_file">Module:  test_feature1</span>
+          </summary>
+          <table class="results" style="width:100%;">
+            <tr>
+              <th style="width:50px;">Status</th>
+              <th>Test</th>
+              <th style="width:100px;">Duration</th>
+            </tr>
+            <tr class="ok">
+              <td>ok</td>
+              <td>
+                <details>
+                  <summary>
+                    <strong style="padding-right: 20px;">test_bar</strong>
+(test_feature1.TestFeature3)
+                  </summary>
+                  <pre>crayola: INFO: i am bar</pre>
+                </details>
+              </td>
+              <td>0.00 sec</td>
+            </tr>
+            <tr class="ok">
+              <td>ok</td>
+              <td>
+                <details>
+                  <summary>
+                    <strong style="padding-right: 20px;">test_foo</strong>
+(test_feature1.TestFeature3)
+                  </summary>
                   <pre>crayola: INFO: i am foo</pre>
                 </details>
               </td>
@@ -95,9 +154,12 @@ crayola: INFO: i am bar
               <td>error</td>
               <td>
                 <details>
-                  <summary>test_feature2.TestFeature2.test_eggs</summary>
+                  <summary>
+                    <strong style="padding-right: 20px;">test_eggs</strong>
+(test_feature2.TestFeature2)
+                  </summary>
                   <pre>Traceback (most recent call last):
-  File &quot;c:\python27\lib\unittest\case.py&quot;, line 331, in run
+  File &quot;c:\python27\lib\unittest\case.py&quot;, line 327, in run
     testMethod()
   File &quot;c:\python27\lib\site-packages\nose\case.py&quot;, line 197, in runTest
     self.test(*self.arg)
@@ -116,7 +178,10 @@ crayola: INFO: i am eggs
               <td>ok</td>
               <td>
                 <details>
-                  <summary>test_feature2.TestFeature2.test_spam</summary>
+                  <summary>
+                    <strong style="padding-right: 20px;">test_spam</strong>
+(test_feature2.TestFeature2)
+                  </summary>
                   <pre>crayola: INFO: i am spam</pre>
                 </details>
               </td>

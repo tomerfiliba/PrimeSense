@@ -4,7 +4,8 @@ import traceback
 import logging
 import threading
 from nose.plugins import Plugin
-from srcgen.hypertext import html, body, head, div, p, pre, style, table, td, tr, th, small, title, h1, span, pre, TEXT
+from srcgen.hypertext import (html, strong, body, head, div, p, pre, style, table, td, tr, th, small, title, h1, 
+    span, pre, TEXT, a, script, UNESCAPED)
 from srcgen.hypertext import Element
 
 
@@ -48,7 +49,10 @@ class Suite(object):
                             with td:
                                 if extra:
                                     with details:
-                                        summary(test.shortDescription() or str(test))
+                                        name = (test.shortDescription() or str(test)).split(".")
+                                        with summary:
+                                            strong(name[-1], style = "padding-right: 20px;")
+                                            TEXT("(%s)" % (".".join(name[:-1]),))
                                         pre(extra)
                                 else:
                                     TEXT(test.shortDescription() or str(test))
@@ -146,20 +150,22 @@ class HtmlReportPlugin(Plugin):
                 with style:
                     TEXT("body {font-family: arial;}")
                     TEXT("*:focus {outline: none;}")
+                    TEXT("summary {cursor: pointer;}")
                     #TEXT("div.infobox {background-color: #f0fff0; padding: ;}")
                     TEXT("table.results td {vertical-align: top;}")
-                    TEXT("div.test_suite summary {font-family: monospace; font-weight: bold; padding: 5px;}")
+                    TEXT("div.test_suite {border: 2px solid #bbb; padding: 5px; border-radius: 5px;}")
+                    TEXT("div.test_suite summary {padding: 5px;}")
                     TEXT("div.test_suite summary.ok {background-color: rgb(139, 248, 66);}")
-                    TEXT("div.test_suite summary.fail {background-color: rgb(248, 66, 66);}")
-                    TEXT("div.test_suite {margin-top: 2em; margin-bottom: 1em;}")
-                    TEXT("div.test_suite span.test_name {font-size: 1.5em;}")
+                    TEXT("div.test_suite summary.fail {background-color: rgb(236, 175, 141);}")
+                    TEXT("div.test_suite {margin-top: 2em;}")
+                    TEXT("div.test_suite span.test_name {font-weight: bold; font-size: 1.5em;}")
                     TEXT("div.test_suite span.test_file {float: right;}")
-                    TEXT("table.results tr.ok {background-color: #11dd22;}")
+                    TEXT("table.results tr.ok {background-color: rgb(139, 248, 66);}")
                     TEXT("table.results tr.fail {background-color: #dddd22;}")
                     TEXT("table.results tr.error {background-color: rgb(236, 175, 141);}")
                     TEXT("table.results tr.skip {background-color: #dd1122;}")
-                    TEXT("div.content {margin-right:auto; margin-left:auto; max-width:900px;}")
-                   
+                    TEXT("div.content {margin-right:auto; margin-left:auto; max-width:960px;}")
+                    
             
             with body():
                 with div.content:
@@ -169,6 +175,16 @@ class HtmlReportPlugin(Plugin):
                         p("Ended:", time.asctime())
                         p("Total of %d tests, %d failures, %d errors" % (result.testsRun, 
                             len(result.failures), len(result.errors)))
+                        with script():
+                            UNESCAPED("""function toggle_expand(){
+                                var all_details = document.getElementsByTagName('details');
+                                
+                                for(var i = 0; i < all_details.length; i++) {
+                                    all_details[i].open = !all_details[i].open;
+                                }
+                            }""")
+                        with p:
+                            a("Expand", onclick="toggle_expand()")
             
                     for suite in self.suites:
                         suite.to_html()
