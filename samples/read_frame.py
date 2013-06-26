@@ -1,5 +1,5 @@
+from __future__ import print_function
 from primelib import openni2
-import sys
 
 
 openni2.initialize()
