@@ -1,4 +1,5 @@
 from cbinder.generator import CBindings
+import os
  
 
 predefs = {
@@ -26,15 +27,16 @@ prelude = [
     "typedef unsigned long long uint64_t;",
 ]
 
+INC_DIR = r"c:\workspace\\openNI2\Include"
+HFILES = [os.path.join(INC_DIR, f) for f in ["OniCAPI.h", "PS1080.h", "PSLink.h"]]
+INCLUDES = [
+    "OniCEnums.h", "OniCProperties.h", "OniCTypes.h", "OniVersion.h", "PrimeSense.h",
+]
+
 class OpenNI2Builder(CBindings):
     @classmethod
     def build(cls):
-        builder = cls(["../res/include/OniCAPI.h", "../res/include/PSLink.h", "../res/include/PS1080.h"], 
-            includes = ["OniCEnums.h", "OniCProperties.h", "OniCTypes.h", "OniVersion.h", "PrimeSense.h"], 
-            predefs = predefs, 
-            prelude = prelude, 
-            debug = True
-            )
+        builder = cls(HFILES, includes = INCLUDES, predefs = predefs, prelude = prelude)
         builder.export("../primelib/_openni2.py")
 
     def filter_type(self, tp):

@@ -290,12 +290,13 @@ class CtypesGenVisitor(c_ast.NodeVisitor):
 
 
 class CBindings(object):
-    def __init__(self, hfiles, includes = [], predefs = {}, prelude = [], debug = False):
+    def __init__(self, hfiles, includes = [], include_dirs = [], predefs = {}, prelude = [], debug = False):
         self.hfiles = hfiles
         self.types = OrderedDict()
         self.funcs = OrderedDict()
         self.macros = OrderedDict()
         self.macros.update(predefs)
+        self.include_dirs = include_dirs
         
         lines = []
         self._included = set()
@@ -337,8 +338,16 @@ class CBindings(object):
         if in_packed:
             raise ValueError("Detected #pragma pack without a matching pop")
     
+    @classmethod
+    def _find_inc(cls, name, include_dirs):
+        for path in include_dirs:
+            fn = os.path.join(path, name)
+            if os.path.isfile(fn):
+                return fn
+        raise Exception("Cannot open %r - not found in %r" % (name, include_dirs))
+    
     def _load_with_includes(self, rootfile, includes):
-        path = os.path.dirname(os.path.abspath(rootfile))
+        include_dirs = [os.path.dirname(os.path.abspath(rootfile))] + self.include_dirs 
         lines = strip_comments(open(rootfile, "rU").read()+"\n\n\n").splitlines()
         i = -1
         while i + 1 < len(lines):
@@ -353,7 +362,8 @@ class CBindings(object):
             if filename not in includes or filename in self._included:
                 continue
             self._included.add(filename)
-            lines2 = strip_comments(open(os.path.join(path, filename), "rU").read()+"\n\n\n").splitlines()
+            fullname = self._find_inc(filename, include_dirs)
+            lines2 = strip_comments(open(fullname, "rU").read()+"\n\n\n").splitlines()
             lines[i+1:i+1] = lines2
         return [l.strip() for l in lines if l.strip()]
     

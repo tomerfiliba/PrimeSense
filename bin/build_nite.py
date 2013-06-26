@@ -1,13 +1,13 @@
 from cbinder.generator import CBindings
-from build_openni import predefs, prelude
+from build_openni import predefs, prelude, INC_DIR as ONI_INC_DIR, INCLUDES as ONI_INCLUDES
 
 
 class Nite2Builder(CBindings):
     @classmethod
     def build(cls):
-        builder = cls(["../res/include/NiteCAPI.h"], 
-            includes = ["NiteCEnums.h", "NiteCTypes.h", "NiteVersion.h", 
-                "OniCAPI.h", "OniCEnums.h", "OniCProperties.h", "OniCTypes.h", "OniVersion.h"], 
+        builder = cls(["../res/include/NiteCAPI.h"],
+            includes = ["NiteCEnums.h", "NiteCTypes.h", "NiteVersion.h"] + ONI_INCLUDES,
+            include_dirs = [ONI_INC_DIR], 
             predefs = predefs, 
             prelude = prelude)
         builder.export("../primelib/_nite2.py")
