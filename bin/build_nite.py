@@ -5,7 +5,7 @@ from build_openni import predefs, prelude, INC_DIR as ONI_INC_DIR, INCLUDES as O
 class Nite2Builder(CBindings):
     @classmethod
     def build(cls):
-        builder = cls(["../res/include/NiteCAPI.h"],
+        builder = cls([r"c:\workspace\Nite2SDK\SDK\Include\NiteCAPI.h"],
             includes = ["NiteCEnums.h", "NiteCTypes.h", "NiteVersion.h"] + ONI_INCLUDES,
             include_dirs = [ONI_INC_DIR], 
             predefs = predefs, 
