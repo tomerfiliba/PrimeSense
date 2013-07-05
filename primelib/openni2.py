@@ -192,24 +192,27 @@ class PlaybackSupport(object):
 
 class Device(HandleObject):
     def __init__(self, uri, mode = None):
+        self._orig_uri = uri
         self.uri = uri
         self._mode = mode
-        HandleObject.__init__(self, c_api.OniDeviceHandle())
+        HandleObject.__init__(self, None)
         self._reopen()
-        self._devinfo = None
         _registered_devices.add(self)
     
     def _reopen(self):
         self.close()
+        self._handle = c_api.OniDeviceHandle()
         if self._mode:
-            c_api.oniDeviceOpenEx(self.uri, self._mode, ctypes.byref(self._handle))
+            c_api.oniDeviceOpenEx(self._orig_uri, self._mode, ctypes.byref(self._handle))
         else:
-            c_api.oniDeviceOpen(self._uri, ctypes.byref(self._handle))
+            c_api.oniDeviceOpen(self._orig_uri, ctypes.byref(self._handle))
         if self.is_file():
             self.playback = PlaybackSupport(self)
         else:
             self.playback = None
         self._sensor_infos = {}
+        self._devinfo = None
+        self.get_device_info()
 
     @classmethod
     def enumerate_uris(cls):
@@ -628,19 +631,19 @@ def get_log_filename():
     else:
         return buf.value
 
-def configure_logging(log_directory = None, log_severity = None, log_to_console = None):
+def configure_logging(directory = None, severity = None, console = None):
     """
     severity: 0 - Verbose; 1 - Info; 2 - Warning; 3 - Error. Default - None
     """
-    if log_severity is not None:
-        c_api.oniSetLogMinSeverity(log_severity)
+    if severity is not None:
+        c_api.oniSetLogMinSeverity(severity)
     
-    if log_to_console is not None:
-        c_api.oniSetLogConsoleOutput(bool(log_to_console))
+    if console is not None:
+        c_api.oniSetLogConsoleOutput(bool(console))
     
-    if log_directory is not None:
+    if directory is not None:
         c_api.oniSetLogFileOutput(True)
-        c_api.oniSetLogOutputFolder(log_directory)
+        c_api.oniSetLogOutputFolder(directory)
     else:
         c_api.oniSetLogFileOutput(False)
 
