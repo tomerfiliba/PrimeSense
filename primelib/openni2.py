@@ -395,6 +395,7 @@ class VideoStream(HandleObject):
     def _close(self):
         if is_initialized():
             self.unregister_all_new_frame_listeners()
+            self.stop()
             c_api.oniStreamDestroy(self._handle)
         self.camera = None
 

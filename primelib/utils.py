@@ -45,6 +45,9 @@ class HandleObject(object):
         return self
     def __exit__(self, t, v, tb):
         self.close()
+    def __bool__(self):
+        return hasattr(self, "_handle") and bool(self._handle)
+    __nonzero__ = __bool__
     def close(self):
         if hasattr(self, "_handle") and self._handle:
             self._close()
