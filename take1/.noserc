@@ -1,4 +1,5 @@
 [nosetests]
 with-html-report=1
 verbosity=3
+detailed-errors=1
 

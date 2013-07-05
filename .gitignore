@@ -2,4 +2,7 @@
 .pydevproject
 *.pyc
 __pycache__
+*.html
+log
+logs
 

@@ -23,6 +23,8 @@ class Suite(object):
         self.tests.append([test, time.time(), None, None])
 
     def set_result(self, status, extra = None):
+        if not self.tests or self.tests[-1][2] is not None:
+            self.tests.append(["Unknown", time.time(), None, None])
         self.tests[-1][1] = time.time() - self.tests[-1][1]
         self.tests[-1][2] = status
         self.tests[-1][3] = extra
@@ -182,7 +184,7 @@ class HtmlReportPlugin(Plugin):
         with css("div.content"):
             css["margin-right"] = "auto"
             css["margin-left"] = "auto"
-            css["max-width"] = "960px"
+            css["max-width"] = "1200px"
         
         with css("table.results"):
             with css("td"):
@@ -194,6 +196,8 @@ class HtmlReportPlugin(Plugin):
                     css["width"] = "4em"
                 with css(".test_name"):
                     css["padding-top"] = "0"
+                    css["max-width"] = "1030px"
+                    css["overflow-x"] = "auto"
                 with css(".duration"):
                     css["width"] = "5em"
             
