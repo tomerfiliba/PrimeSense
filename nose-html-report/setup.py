@@ -3,6 +3,7 @@ from setuptools import setup
 
 if len(sys.argv) == 1:
     sys.argv.append("bdist_egg")
+    #sys.argv.append("install")
 
 setup(
     name = 'nosehtml',

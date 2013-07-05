@@ -1,0 +1,4 @@
+[nosetests]
+with-html-report=1
+verbosity=3
+

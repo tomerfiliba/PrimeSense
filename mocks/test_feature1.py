@@ -13,6 +13,8 @@ class TestFeature1(object):
 class TestFeature3(object):
     def test_foo(self):
         logger.info("i am foo")
+        logger.warn("oh my %d", 7)
+        logger.error("oh no! %d", 5)
 
     def test_bar(self):
         logger.info("i am bar")
