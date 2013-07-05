@@ -1,5 +1,9 @@
-from cbinder.generator import CBindings
 import os
+import ConfigParser
+from cbinder.generator import CBindings
+
+config = ConfigParser.ConfigParser()
+config.read(os.path.join(os.path.dirname(__file__), 'sources.ini'))
  
 
 predefs = {
@@ -27,8 +31,10 @@ prelude = [
     "typedef unsigned long long uint64_t;",
 ]
 
-INC_DIR = r"c:\workspace\\openNI2\Include"
-HFILES = [os.path.join(INC_DIR, f) for f in ["OniCAPI.h", "PS1080.h", "PSLink.h"]]
+HFILES = [
+    "OniCAPI.h", "PS1080.h", "PSLink.h",
+]
+HFILES = [os.path.join(config.get("headers", "openni_include_dir"), f) for f in HFILES]
 INCLUDES = [
     "OniCEnums.h", "OniCProperties.h", "OniCTypes.h", "OniVersion.h", "PrimeSense.h",
 ]

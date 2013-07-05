@@ -5,8 +5,12 @@ import primelib
 import inspect
 import tokenize
 import logging
+import ConfigParser
 from io import StringIO
 from cbinder.generator import delimiters
+
+config = ConfigParser.ConfigParser()
+config.read("../bin/sources.ini")
 
 
 class TestBindings(unittest.TestCase):
@@ -30,9 +34,11 @@ class TestBindings(unittest.TestCase):
         self.assertEqual(ver.major, openni2.c_api.ONI_VERSION_MAJOR)
         self.assertEqual(ver.minor, openni2.c_api.ONI_VERSION_MINOR)
 
-        self.check_unexposed_functions(openni2, _openni2, "../res/include/OpenNI.h", ["oniGetExtendedError"])
-        self.check_missing_names_by_prefix(openni2, "../res/include/OpenNI.h", "DEVICE_PROPERTY_", "ONI_")
-        self.check_missing_names_by_prefix(openni2, "../res/include/OpenNI.h", "STREAM_PROPERTY_", "ONI_")
+        h_file = os.path.join(config.get("headers", "openni_include_dir"), "OpenNI.h")
+
+        self.check_unexposed_functions(openni2, _openni2, h_file, ["oniGetExtendedError"])
+        self.check_missing_names_by_prefix(openni2, h_file, "DEVICE_PROPERTY_", "ONI_")
+        self.check_missing_names_by_prefix(openni2, h_file, "STREAM_PROPERTY_", "ONI_")
         
 
     def _get_identifiers(self, mod):
@@ -97,8 +103,8 @@ class TestBindings(unittest.TestCase):
         self.assertEqual(ver.major, nite2.c_api.NITE_VERSION_MAJOR)
         self.assertEqual(ver.minor, nite2.c_api.NITE_VERSION_MINOR)
 
-        self.check_unexposed_functions(nite2, _nite2, "../res/include/NiTE.h")
-
+        h_file = os.path.join(config.get("headers", "nite_include_dir"), "NiTE.h")
+        self.check_unexposed_functions(nite2, _nite2, h_file)
 
 
 if __name__ == "__main__":

@@ -193,19 +193,23 @@ class PlaybackSupport(object):
 class Device(HandleObject):
     def __init__(self, uri, mode = None):
         self.uri = uri
-        handle = c_api.OniDeviceHandle()
-        if mode:
-            c_api.oniDeviceOpenEx(uri, mode, ctypes.byref(handle))
-        else:
-            c_api.oniDeviceOpen(uri, ctypes.byref(handle))
-        HandleObject.__init__(self, handle)
+        self._mode = mode
+        HandleObject.__init__(self, c_api.OniDeviceHandle())
+        self._reopen()
         self._devinfo = None
+        _registered_devices.add(self)
+    
+    def _reopen(self):
+        self.close()
+        if self._mode:
+            c_api.oniDeviceOpenEx(self.uri, self._mode, ctypes.byref(self._handle))
+        else:
+            c_api.oniDeviceOpen(self._uri, ctypes.byref(self._handle))
         if self.is_file():
             self.playback = PlaybackSupport(self)
         else:
             self.playback = None
         self._sensor_infos = {}
-        _registered_devices.add(self)
 
     @classmethod
     def enumerate_uris(cls):

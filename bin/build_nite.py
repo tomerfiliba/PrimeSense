@@ -1,13 +1,18 @@
+import ConfigParser
+import os
 from cbinder.generator import CBindings
-from build_openni import predefs, prelude, INC_DIR as ONI_INC_DIR, INCLUDES as ONI_INCLUDES
+from build_openni import predefs, prelude, INCLUDES as ONI_INCLUDES
+
+config = ConfigParser.ConfigParser()
+config.read(os.path.join(os.path.dirname(__file__), 'sources.ini'))
 
 
 class Nite2Builder(CBindings):
     @classmethod
     def build(cls):
-        builder = cls([r"c:\workspace\Nite2SDK\SDK\Include\NiteCAPI.h"],
+        builder = cls([os.path.join(config.get("headers", "nite_include_dir"), "NiteCAPI.h")],
             includes = ["NiteCEnums.h", "NiteCTypes.h", "NiteVersion.h"] + ONI_INCLUDES,
-            include_dirs = [ONI_INC_DIR], 
+            include_dirs = [config.get("headers", "openni_include_dir")], 
             predefs = predefs, 
             prelude = prelude)
         builder.export("../primelib/_nite2.py")
