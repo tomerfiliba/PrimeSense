@@ -636,17 +636,16 @@ def configure_logging(directory = None, severity = None, console = None):
     """
     severity: 0 - Verbose; 1 - Info; 2 - Warning; 3 - Error. Default - None
     """
-    if severity is not None:
-        c_api.oniSetLogMinSeverity(severity)
-    
-    if console is not None:
-        c_api.oniSetLogConsoleOutput(bool(console))
-    
     if directory is not None:
         c_api.oniSetLogFileOutput(True)
         c_api.oniSetLogOutputFolder(directory)
     else:
         c_api.oniSetLogFileOutput(False)
 
+    if severity is not None:
+        c_api.oniSetLogMinSeverity(severity)
+    
+    if console is not None:
+        c_api.oniSetLogConsoleOutput(bool(console))
 
 
