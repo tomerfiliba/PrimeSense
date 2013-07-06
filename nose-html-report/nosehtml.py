@@ -45,6 +45,8 @@ class Suite(object):
                         doc.th("Test")
                         doc.th("Duration")
                     for test, dur, res, extra in self.tests:
+                        if not res:
+                            res = "skip"
                         with doc.tr(class_ = res + (" single_test_ok" if res == "ok" else "")):
                             doc.td(res, class_ = "status")
                             with doc.td(class_ = "test_name"):
@@ -65,7 +67,7 @@ class Suite(object):
                         for record in extra:
                             level_class = ("log_err" if record.levelno >= logging.ERROR else
                                 "log_warn" if record.levelno >= logging.WARNING else "log_info")
-                            with doc.tr(class_=level_class):
+                            with doc.tr(class_ = level_class):
                                 doc.td(datetime.fromtimestamp(record.created).strftime("%H:%M:%S"), class_="log_time")
                                 doc.td(record.levelname, class_="log_level")
                                 with doc.td(class_="log_msg"):
