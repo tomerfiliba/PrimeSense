@@ -202,10 +202,12 @@ class Device(HandleObject):
     def _reopen(self):
         self.close()
         self._handle = c_api.OniDeviceHandle()
+        assert not bool(self._handle)
         if self._mode:
             c_api.oniDeviceOpenEx(self._orig_uri, self._mode, ctypes.byref(self._handle))
         else:
             c_api.oniDeviceOpen(self._orig_uri, ctypes.byref(self._handle))
+        assert bool(self._handle), "Handle is NULL after open"
         if self.is_file():
             self.playback = PlaybackSupport(self)
         else:
