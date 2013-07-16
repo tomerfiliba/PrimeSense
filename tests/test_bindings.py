@@ -1,7 +1,7 @@
 import unittest
 import subprocess
 import os
-import primelib
+import primesense
 import inspect
 import tokenize
 import logging
@@ -14,7 +14,7 @@ config.read("../bin/sources.ini")
 
 
 class TestBindings(unittest.TestCase):
-    GEN_DIR = primelib.__path__[0]
+    GEN_DIR = primesense.__path__[0]
     GEN_ONI = os.path.join(GEN_DIR, "_openni2.py")
     GEN_NITE = os.path.join(GEN_DIR, "_nite2.py")
 
@@ -24,8 +24,8 @@ class TestBindings(unittest.TestCase):
         subprocess.check_call(["python", "../bin/build_openni.py"])
         self.assertTrue(os.path.exists(self.GEN_ONI))
         
-        from primelib import _openni2
-        from primelib import openni2
+        from primesense import _openni2
+        from primesense import openni2
         
         openni2.initialize()
         ver = openni2.get_version()
@@ -93,8 +93,8 @@ class TestBindings(unittest.TestCase):
         subprocess.check_call(["python", "../bin/build_nite.py"])
         self.assertTrue(os.path.exists(self.GEN_NITE))
 
-        from primelib import _nite2
-        from primelib import nite2
+        from primesense import _nite2
+        from primesense import nite2
 
         nite2.initialize()
         ver = nite2.get_version()

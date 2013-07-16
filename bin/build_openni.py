@@ -43,7 +43,7 @@ class OpenNI2Builder(CBindings):
     @classmethod
     def build(cls):
         builder = cls(HFILES, includes = INCLUDES, predefs = predefs, prelude = prelude)
-        builder.export("../primelib/_openni2.py")
+        builder.export("../primesense/_openni2.py")
 
     def filter_type(self, tp):
         return tp.name not in ["bool", "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", 
@@ -53,12 +53,12 @@ class OpenNI2Builder(CBindings):
         return "Android" not in func.name
 
     def emit_prelude(self, m):
-        #copy("../cbinder/lib.py", "../primelib/cbinder_lib.py")
-        m.from_("primelib.utils", "CEnum", "UnloadedDLL")
+        #copy("../cbinder/lib.py", "../primesense/cbinder_lib.py")
+        m.from_("primesense.utils", "CEnum", "UnloadedDLL")
 
     def before_funcs_hook(self, m):
         m.import_("functools")
-        m.from_("primelib.utils", "OpenNIError")
+        m.from_("primesense.utils", "OpenNIError")
         m.sep()
         with m.def_("oni_call", "func"):
             m.stmt("@functools.wraps(func)")

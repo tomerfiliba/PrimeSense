@@ -6,9 +6,9 @@ import weakref
 import atexit
 import ctypes
 import platform
-from primelib import _nite2 as c_api
-from primelib import openni2
-from primelib.utils import inherit_properties, ClosedHandle, HandleObject, InitializationError
+from primesense import _nite2 as c_api
+from primesense import openni2
+from primesense.utils import inherit_properties, ClosedHandle, HandleObject, InitializationError
 
 
 arch = int(platform.architecture()[0].lower().replace("bit", ""))

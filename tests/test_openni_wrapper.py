@@ -1,6 +1,6 @@
-from primelib import openni2
 import os
 import time
+from primesense import openni2
 
 
 openni2.initialize()

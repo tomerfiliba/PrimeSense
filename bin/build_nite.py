@@ -15,7 +15,7 @@ class Nite2Builder(CBindings):
             include_dirs = [config.get("headers", "openni_include_dir")], 
             predefs = predefs, 
             prelude = prelude)
-        builder.export("../primelib/_nite2.py")
+        builder.export("../primesense/_nite2.py")
 
     def filter_type(self, tp):
         return tp.name not in ["bool", "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", 
@@ -25,8 +25,8 @@ class Nite2Builder(CBindings):
         return not func.name.startswith("oni")
 
     def emit_prelude(self, m):
-        #copy("../cbinder/lib.py", "../primelib/cbinder_lib.py")
-        m.from_("primelib.utils", "CEnum", "UnloadedDLL")
+        #copy("../cbinder/lib.py", "../primesense/cbinder_lib.py")
+        m.from_("primesense.utils", "CEnum", "UnloadedDLL")
     
     def emit_struct_decl(self, m, tp):
         if tp.name.lower().startswith("oni"):
@@ -56,7 +56,7 @@ class Nite2Builder(CBindings):
     
     def before_funcs_hook(self, m):
         m.import_("functools")
-        m.from_("primelib.utils", "NiteError")
+        m.from_("primesense.utils", "NiteError")
         m.sep()
         with m.def_("nite_call", "func"):
             m.stmt("@functools.wraps(func)")

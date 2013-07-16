@@ -4,11 +4,12 @@ from plumbum.utils import copy, delete
 
 class BuildPackage(cli.Application):
     upload = cli.Flag("--upload")
+    
     def main(self):
         local.python("build_openni.py")
         local.python("build_nite.py")
         
-        from primelib import openni2
+        from primesense import openni2
         
         dist = local.path("../dist")
         dist.delete()
@@ -18,7 +19,7 @@ class BuildPackage(cli.Application):
         tmp.delete()
         tmp.mkdir()
         
-        copy("../primelib", tmp / "primelib")
+        copy("../primesense", tmp / "primesense")
         copy("MANIFEST.in", tmp)
         copy("../LICENSE", tmp)
         copy("../README.rst", tmp)

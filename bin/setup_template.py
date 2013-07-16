@@ -6,16 +6,16 @@ try:
 except ImportError:
     from distutils.core import setup
 
-setup(name = "primelib",
+setup(name = "primesense",
     version = "$VERSION$",
     description = "OpenNI2 and NiTE2 python bindings",
     author = "PrimeSense Inc",
     author_email = "primesense.com",
     license = "MIT",
     url = "http://www.openni.org/",
-    packages = ["primelib"],
+    packages = ["primesense"],
     platforms = ["POSIX", "Windows"],
-    provides = ["primelib"],
+    provides = ["primesense"],
     keywords = "PrimeSense, OpenNI, OpenNI2, Natural Interaction, NiTE, NiTE2",
     long_description = """\
 Official `PrimeSense <http://www.primesense.com/>`_ Python-bindings for `OpenNI2 <http://www.openni.org/>`_
@@ -25,7 +25,7 @@ This package provides only the Python bindings; be sure to install OpenNI (and o
 
 Example::
     
-    from primelib import openni2
+    from primesense import openni2
     
     openni2.initialize()     # can also accept the path of the OpenNI redistribution
     
@@ -45,10 +45,11 @@ Example::
 
 """,
     classifiers = [
-        "Development Status :: 5 - Production/Stable",
-        "License :: OSI Approved :: MIT License",
+        "Development Status :: 4 - Beta",
+        "License :: OSI Approved :: Apache Software License",
         "Operating System :: Microsoft :: Windows",
         "Operating System :: POSIX",
+        "Operating System :: MacOS",
         "Programming Language :: Python :: 2.6",
         "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3",
