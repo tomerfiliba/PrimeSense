@@ -3,6 +3,7 @@
 *.pyc
 __pycache__
 *.html
-log
-logs
+Log
+dist
+build
 
