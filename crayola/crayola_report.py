@@ -14,9 +14,6 @@ try:
 except ImportError:
     psutil = None
 
-def extra_headers(doc):
-    pass
-
 
 class Suite(object):
     def __init__(self, name, filename):
@@ -109,7 +106,8 @@ class Suite(object):
                             for name, url in test._html_errlink:
                                 with doc.li():
                                     doc.span("Link to %s: " % (name,))
-                                    doc.a(url, href = url if "://" in url else "file:///%s" % (url.replace("\\", "/"),))
+                                    url2 = url if "://" in url else "file:///%s" % (url.replace("\\", "/"),)
+                                    doc.a(url, href = url2)
         else:
             name = (test.shortDescription() or str(test)).split(".")
             doc.strong(name[-1], class_ = "test_name")
@@ -145,7 +143,7 @@ class RecordCollectingHandler(logging.Handler):
 
 
 class HtmlReportPlugin(Plugin):
-    name = 'html-report'
+    name = 'crayola-report'
     
     def options(self, parser, env=os.environ):
         Plugin.options(self, parser, env)
@@ -181,12 +179,22 @@ class HtmlReportPlugin(Plugin):
         self.records.clear()
     
     def addSuccess(self, test):
+        try:
+            test._html_errlink = getattr(test.test.inst, "report_error_links", ())
+        except AttributeError:
+            test._html_errlink = ()
         self.curr_suite.set_result(test, "ok", self.records.records)
     def addError(self, test, err):
-        test._html_errlink = getattr(test.test.inst, "report_error_links", ())
+        try:
+            test._html_errlink = getattr(test.test.inst, "report_error_links", ())
+        except AttributeError:
+            test._html_errlink = ()
         self.curr_suite.set_result(test, "error", "".join(traceback.format_exception(*err)))
     def addFailure(self, test, err):
-        test._html_errlink = getattr(test.test.inst, "report_error_links", ())
+        try:
+            test._html_errlink = getattr(test.test.inst, "report_error_links", ())
+        except AttributeError:
+            test._html_errlink = ()
         self.curr_suite.set_result(test, "fail", "".join(traceback.format_exception(*err)))
     def addSkip(self, test):
         self.curr_suite.set_result(test, "skip")
@@ -326,8 +334,6 @@ class HtmlReportPlugin(Plugin):
                         with doc.tr():
                             with doc.td(colspan=2):
                                 doc.code(" ".join(sys.argv))
-                        
-                        extra_headers(doc)
                         
                         with doc.tr():
                             with doc.td():

@@ -1,5 +1,5 @@
 from crayola import CrayolaTestBase
-from primelib import openni2
+from primesense import openni2
 
 
 class TestPermutations(CrayolaTestBase):
@@ -19,7 +19,7 @@ class TestPermutations(CrayolaTestBase):
                 with stream:
                     self.verify_stream_fps(stream, 3, error_threshold)
     
-    def test_permutations_color(self):
+    def _test_permutations_color(self):
         modes = [(320, 240, 30), (320, 240, 60), (640, 480, 30)]
         formats = [
             openni2.PIXEL_FORMAT_RGB888,
@@ -30,7 +30,7 @@ class TestPermutations(CrayolaTestBase):
         self.device.set_usb_iso()
         self._test_permutations(self.get_color_stream, modes, formats)
 
-    def test_permutations_depth(self):
+    def _test_permutations_depth(self):
         modes = [(320, 240, 30), (320, 240, 60), (640, 480, 30)]
         formats = [
             openni2.PIXEL_FORMAT_DEPTH_1_MM,

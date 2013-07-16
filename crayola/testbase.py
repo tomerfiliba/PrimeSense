@@ -28,7 +28,7 @@ class CrayolaTestBase(object):
     def _get_device(cls):
         openni2.unload()
         openni2.initialize()
-        openni2.configure_logging(severity = 1)
+        openni2.configure_logging("./log", severity = 0)
         if cls._the_device:
             cls._the_device.close()
         try:
@@ -45,7 +45,7 @@ class CrayolaTestBase(object):
                 stream.close()
                 setattr(cls, name, None)
         
-        cls.oni_logfile = openni2.get_log_filename()
+        cls._oni_logfile = openni2.get_log_filename()
         return cls._the_device
 
     @classmethod
