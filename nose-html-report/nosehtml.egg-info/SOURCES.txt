@@ -1,8 +1,0 @@
-nosehtml.py
-setup.py
-nosehtml.egg-info/PKG-INFO
-nosehtml.egg-info/SOURCES.txt
-nosehtml.egg-info/dependency_links.txt
-nosehtml.egg-info/entry_points.txt
-nosehtml.egg-info/not-zip-safe
-nosehtml.egg-info/top_level.txt

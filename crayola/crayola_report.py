@@ -9,7 +9,13 @@ from datetime import datetime
 from nose.plugins import Plugin
 from srcgen.html import HtmlDocument
 from srcgen.js import JS
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
+def extra_headers(doc):
+    pass
 
 
 class Suite(object):
@@ -20,14 +26,31 @@ class Suite(object):
         self.all_ok = True
 
     def add_test(self, test):
-        self.tests.append([test, time.time(), None, None])
+        test._html_start_time = time.time()
+        test._html_end_time = time.time()
+        test._html_status = "skip"
+        test._html_extra = None
+        test._html_cpumem = None
+        test._html_errlink = ()
+        self.tests.append(test)
 
-    def set_result(self, status, extra = None):
-        if not self.tests or self.tests[-1][2] is not None:
-            self.tests.append(["Unknown", time.time(), None, None])
-        self.tests[-1][1] = time.time() - self.tests[-1][1]
-        self.tests[-1][2] = status
-        self.tests[-1][3] = extra
+    def set_result(self, test, status, extra = None):
+        if not self.tests:
+            test._html_start_time = time.time()
+            test._html_end_time = time.time()
+            test._html_status = "skip"
+            test._html_extra = None
+            test._html_cpumem = None
+            test._html_errlink = ()
+            self.tests.append(test)
+        
+        test._html_end_time = time.time()
+        test._html_status = status
+        test._html_extra = extra
+        if psutil:
+            proc = psutil.Process(os.getpid())
+            test._html_cpumem = (proc.get_cpu_percent(), proc.get_memory_percent())
+            
         if status not in ("ok", "skip"):
             self.all_ok = False
     
@@ -43,28 +66,31 @@ class Suite(object):
                     with doc.tr():
                         doc.th("Status")
                         doc.th("Test")
+                        doc.th("CPU/Mem")
                         doc.th("Duration")
-                    for test, dur, res, extra in self.tests:
-                        if not res:
-                            res = "skip"
+                    for test in self.tests:
+                        res = test._html_status
                         with doc.tr(class_ = res + (" single_test_ok" if res == "ok" else "")):
                             doc.td(res, class_ = "status")
                             with doc.td(class_ = "test_name"):
-                                #doc.text("Hello")
-                                self._format_details(doc, extra, test)
-                            doc.td(self._human_duration(dur), class_="duration")
+                                self._format_details(doc, test)
+                            with doc.td(class_="cpumem"):
+                                if test._html_cpumem:
+                                    cpu, mem = test._html_cpumem
+                                    doc.text("%.2f%% / %.2f%%" % (cpu, mem))
+                            doc.td(self._human_duration(test._html_end_time - test._html_start_time), class_="duration")
 
-    def _format_details(self, doc, extra, test):
-        if extra:
+    def _format_details(self, doc, test):
+        if test._html_extra:
             with doc.subelem("details"):
                 name = (test.shortDescription() or str(test)).split(".")
                 with doc.subelem("summary"):
                     doc.strong(name[-1], class_ = "test_name")
                     doc.text("(%s)" % (".".join(name[:-1]),))
                 
-                if isinstance(extra, list):
+                if isinstance(test._html_extra, list):
                     with doc.table(class_ = "log_records"):
-                        for record in extra:
+                        for record in test._html_extra:
                             level_class = ("log_err" if record.levelno >= logging.ERROR else
                                 "log_warn" if record.levelno >= logging.WARNING else "log_info")
                             with doc.tr(class_ = level_class):
@@ -76,7 +102,14 @@ class Suite(object):
                                     except Exception:
                                         doc.text(record.msg, record.args)
                 else:
-                    doc.pre(extra)
+                    doc.pre(test._html_extra)
+                if test._html_errlink:
+                    with doc.div(class_ = "log_link"):
+                        with doc.ol():
+                            for name, url in test._html_errlink:
+                                with doc.li():
+                                    doc.span("Link to %s: " % (name,))
+                                    doc.a(url, href = url if "://" in url else "file:///%s" % (url.replace("\\", "/"),))
         else:
             name = (test.shortDescription() or str(test)).split(".")
             doc.strong(name[-1], class_ = "test_name")
@@ -104,7 +137,7 @@ class RecordCollectingHandler(logging.Handler):
         return True
     def __getstate__(self):
         state = self.__dict__.copy()
-        del state['lock']
+        state.pop('lock')
         return state
     def __setstate__(self, state):
         self.__dict__.update(state)
@@ -148,13 +181,15 @@ class HtmlReportPlugin(Plugin):
         self.records.clear()
     
     def addSuccess(self, test):
-        self.curr_suite.set_result("ok", self.records.records)
+        self.curr_suite.set_result(test, "ok", self.records.records)
     def addError(self, test, err):
-        self.curr_suite.set_result("error", "".join(traceback.format_exception(*err)))
+        test._html_errlink = getattr(test.test.inst, "report_error_links", ())
+        self.curr_suite.set_result(test, "error", "".join(traceback.format_exception(*err)))
     def addFailure(self, test, err):
-        self.curr_suite.set_result("fail", "".join(traceback.format_exception(*err)))
+        test._html_errlink = getattr(test.test.inst, "report_error_links", ())
+        self.curr_suite.set_result(test, "fail", "".join(traceback.format_exception(*err)))
     def addSkip(self, test):
-        self.curr_suite.set_result("skip")
+        self.curr_suite.set_result(test, "skip")
 
     def finalize(self, result):
         doc = HtmlDocument()
@@ -202,6 +237,9 @@ class HtmlReportPlugin(Plugin):
                     css["overflow-x"] = "auto"
                 with css(".duration"):
                     css["width"] = "5em"
+                with css(".cpumem"):
+                    css["width"] = "4em"
+                    css["font-size"] = "smaller"
             
             with css("summary strong.test_name"):
                 css["padding-right"] = "3em"
@@ -236,6 +274,17 @@ class HtmlReportPlugin(Plugin):
                     css["width"] = "5em"
                 with css("td.log_level"):
                     css["width"] = "5em"
+            
+            with css("div.log_link"):
+                css["margin-bottom"] = "1em"
+                css["padding"] = "1em"
+                css["background-color"] = "rgba(255,255,255,0.8)"
+                css["border-radius"] = "5px"
+                
+                with css("ol"):
+                    css["list-style-type"] = "none"
+                    css["margin"] = "0"
+                    css["padding"] = "0"
         
         with css("div.test_suite"):
             css["border"] = "2px solid #bbb"
@@ -277,6 +326,9 @@ class HtmlReportPlugin(Plugin):
                         with doc.tr():
                             with doc.td(colspan=2):
                                 doc.code(" ".join(sys.argv))
+                        
+                        extra_headers(doc)
+                        
                         with doc.tr():
                             with doc.td():
                                 with doc.table(), doc.tr():
