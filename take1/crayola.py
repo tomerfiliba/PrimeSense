@@ -8,25 +8,51 @@ import sys
 logger = logging.getLogger("crayola")
 
 class ExtendedDevice(openni2.Device):
+    """
+    This class extends the basic OpenNI Device class with extra non-public APIs, 
+    used for testing purposes
+    """
+    
     def soft_reset(self):
+        """
+        performs a soft-reset of the device
+        """
         self.set_property(c_api.XN_MODULE_PROPERTY_RESET, c_api.XnParamResetType.XN_RESET_TYPE_SOFT)
         #self._reopen()
         
-    def hard_reset(self):
+    def hard_reset(self, sleep = 6):
+        """
+        performs a hard-reset of the device (also takes care of sleeping a little and reopening 
+        the device)
+        """
         self.set_property(c_api.XN_MODULE_PROPERTY_RESET, c_api.XnParamResetType.XN_RESET_TYPE_POWER)
-        time.sleep(6)
+        time.sleep(sleep)
         self._reopen()
     
     def set_usb_bulk(self):
+        """
+        puts the device in USB bulk mode
+        """
         self.set_property(c_api.XN_MODULE_PROPERTY_USB_INTERFACE, 
             c_api.XnSensorUsbInterface.XN_SENSOR_USB_INTERFACE_BULK_ENDPOINTS)
 
     def set_usb_iso(self):
+        """
+        puts the device in USB ISO mode
+        """
         self.set_property(c_api.XN_MODULE_PROPERTY_USB_INTERFACE, 
             c_api.XnSensorUsbInterface.XN_SENSOR_USB_INTERFACE_ISO_ENDPOINTS)
 
 
 class CrayolaTestBase(object):
+    """
+    The base class for crayola tests. Your tests *must* derive from this class, 
+    or bad things will ensue.
+    
+    Between each 
+    
+    """
+    
     THRESHOLD = 0.10
     _the_device = None
     _ir_stream = None
@@ -89,6 +115,9 @@ class CrayolaTestBase(object):
                     self.verify_stream_fps(stream, seconds, error_threshold)
 
     def verify_stream_fps(self, stream, seconds, error_threshold = THRESHOLD):
+        """
+        Verifies the number of frames read from the given stream 
+        """
         mode = stream.get_video_mode()
         timestamps = []
         empty_frames = [0]
@@ -126,6 +155,9 @@ class CrayolaTestBase(object):
 
     @classmethod
     def get_ir_stream(cls, width, height, fps, pixfmt = c_api.OniPixelFormat.ONI_PIXEL_FORMAT_GRAY16):
+        """
+        Creates an IR stream with the given configuration.
+        """
         if cls._ir_stream:
             cls._ir_stream.close()
         cls._ir_stream = cls._the_device.create_ir_stream()
@@ -133,6 +165,12 @@ class CrayolaTestBase(object):
 
     @classmethod
     def get_depth_stream(cls, width, height, fps, pixfmt = c_api.OniPixelFormat.ONI_PIXEL_FORMAT_DEPTH_1_MM):
+        """
+        Creates a depth stream with the given configuration.
+        
+        .. note:: Cannot be used in conjunction with an open IR stream. If an IR stream is open, it will be 
+        closed first
+        """
         if cls._ir_stream:
             cls._ir_stream.close()
             cls._ir_stream = None
@@ -143,6 +181,12 @@ class CrayolaTestBase(object):
 
     @classmethod
     def get_color_stream(cls, width, height, fps, pixfmt = c_api.OniPixelFormat.ONI_PIXEL_FORMAT_RGB888):
+        """
+        Creates a color stream with the given configuration.
+        
+        .. note:: Cannot be used in conjunction with an open IR stream. If an IR stream is open, it will be 
+        closed first
+        """
         if cls._ir_stream:
             cls._ir_stream.close()
             cls._ir_stream = None
