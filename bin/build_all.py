@@ -1,12 +1,19 @@
-from plumbum import local, cli
+import sys
+from plumbum import local, cli, FG
 from plumbum.utils import copy
 
+HERE = local.path(__file__).dirname
+ROOT = HERE.up()
 
 class BuildPackage(cli.Application):
     upload = cli.Flag("--upload")
     dont_register = cli.Flag("--dont-register")
     
     def main(self):
+        local.cwd.chdir(HERE)
+        sys.path.insert(0, str(ROOT))
+        local.env["PYTHONPATH"] = ROOT
+
         local.python("build_openni.py")
         local.python("build_nite.py")
         
@@ -37,15 +44,15 @@ class BuildPackage(cli.Application):
                 if orig.exists():
                     copy(orig, "~/.pypirc-openni-wrapper")
                     restore = True
-                copy("../_pypirc", "~/.pypirc")
+                copy(ROOT / "_pypirc", "~/.pypirc")
                 try:
-                    local.python("setup.py", "sdist", "--formats=zip,gztar", 
-                        None if self.dont_register else "register", "upload")
+                    local.python["setup.py", "sdist", "--formats=zip,gztar", 
+                        None if self.dont_register else "register", "upload"] & FG
                 finally:
                     if restore:
                         copy("~/.pypirc-openni-wrapper", orig)
             else:
-                local.python("setup.py", "sdist", "--formats=zip,gztar")
+                local.python["setup.py", "sdist", "--formats=zip,gztar"] & FG
         
         for fn in tmp / "dist" // "*":
             fn.move(dist)

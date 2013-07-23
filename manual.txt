@@ -9,7 +9,7 @@ It should point to the location of the include directory of both OpenNI and NiTE
 Then run ``python build_all.py``, which would build openNI and NiTE and create redist artifacts.
 The artifacts could be found under the ``dist/`` directory on the repo's root.
 ``build_all.py`` can also accept some switches. For example, ``--upload`` will upload the package
-to PyPI; to upload new versions of the files without changing their version, use ``--upload`` 
-in conjunction with ``--skip-register``
+to PyPI; to upload new versions of the files without changing their version (a new release), 
+first remove the files from PyPI (using the web interface) and run ``build_all.py --upload --dont-register``. 
 
 
