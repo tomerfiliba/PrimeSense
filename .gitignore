@@ -9,4 +9,5 @@ log/
 dist
 build
 *.html
+.settings
 
