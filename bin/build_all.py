@@ -1,9 +1,10 @@
 from plumbum import local, cli
-from plumbum.utils import copy, delete
+from plumbum.utils import copy
 
 
 class BuildPackage(cli.Application):
     upload = cli.Flag("--upload")
+    dont_register = cli.Flag("--dont-register")
     
     def main(self):
         local.python("build_openni.py")
@@ -31,7 +32,18 @@ class BuildPackage(cli.Application):
         
         with local.cwd(tmp):
             if self.upload:
-                local.python("setup.py", "sdist", "--formats=zip,gztar", "register", "upload")
+                # copy pypirc to ~
+                orig = local.path("~/.pypirc")
+                if orig.exists():
+                    copy(orig, "~/.pypirc-openni-wrapper")
+                    restore = True
+                copy("../_pypirc", "~/.pypirc")
+                try:
+                    local.python("setup.py", "sdist", "--formats=zip,gztar", 
+                        None if self.dont_register else "register", "upload")
+                finally:
+                    if restore:
+                        copy("~/.pypirc-openni-wrapper", orig)
             else:
                 local.python("setup.py", "sdist", "--formats=zip,gztar")
         

@@ -1,0 +1,15 @@
+Building the Wrapper
+====================
+First of all, make sure you have all the requires packages installed. See requires.txt
+or run ``pip install -r requires.txt`` to install them.
+
+Once you have the dependencies, go to the ``bin/`` directory of this repo and edit ``sources.ini``.
+It should point to the location of the include directory of both OpenNI and NiTE.
+
+Then run ``python build_all.py``, which would build openNI and NiTE and create redist artifacts.
+The artifacts could be found under the ``dist/`` directory on the repo's root.
+``build_all.py`` can also accept some switches. For example, ``--upload`` will upload the package
+to PyPI; to upload new versions of the files without changing their version, use ``--upload`` 
+in conjunction with ``--skip-register``
+
+

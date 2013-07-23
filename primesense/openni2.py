@@ -294,7 +294,11 @@ class Device(HandleObject):
     def is_property_supported(self, property_id):
         return bool(c_api.oniDeviceIsPropertySupported(self._handle, property_id))
 
-    def invoke(self, command_id, data, size = None):
+    def invoke(self, command_id, data = None, size = None):
+        if data is None:
+            size = 0
+        else:
+            data, size = _py_to_ctype_obj(data)
         c_api.oniDeviceInvoke(self._handle, command_id, data, size)
     def is_command_supported(self, command_id):
         return bool(c_api.oniDeviceIsCommandSupported(self._handle, command_id))
@@ -470,6 +474,10 @@ class VideoStream(HandleObject):
     def set_video_mode(self, video_mode):
         self.set_property(c_api.ONI_STREAM_PROPERTY_VIDEO_MODE, video_mode)
     video_mode = property(get_video_mode, set_video_mode)
+    def configure_mode(self, width, height, fps, pixel_format):
+        """shortcut for set_video_mode"""
+        mode = VideoMode(resolutionX = width, resolutionY = height, fps = fps, pixelFormat = pixel_format)
+        self.set_video_mode(mode)
 
     def get_max_pixel_value(self):
         return self.get_int_property(c_api.ONI_STREAM_PROPERTY_MAX_VALUE)
@@ -636,11 +644,13 @@ def get_log_filename():
 
 def configure_logging(directory = None, severity = None, console = None):
     """
+    directory: directory in which log files will be stored
     severity: 0 - Verbose; 1 - Info; 2 - Warning; 3 - Error. Default - None
+    console: whether to print to the console (boolean) 
     """
     if directory is not None:
-        c_api.oniSetLogFileOutput(True)
         c_api.oniSetLogOutputFolder(directory)
+        c_api.oniSetLogFileOutput(True)
     else:
         c_api.oniSetLogFileOutput(False)
 
