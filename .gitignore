@@ -3,7 +3,9 @@
 *.pyc
 __pycache__
 *.html
-Log
+*.egg-info
+Log/
+log/
 dist
 build
 *.html

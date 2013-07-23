@@ -13,71 +13,97 @@ class CrayolaTestBase(object):
     The base class for crayola tests. Your tests *must* derive from this class, 
     or bad things will ensue.
     
-    Between each test, ``setUp`` and ``tearDown`` are called to reset openni 
-    
+    Note that ``setUp`` is called between each test to reset openni and open all available devices.
+    You can use them as ``self.device`` (the first device) or ``self.devices`` (list of all connected 
+    devices). 
     """
     
     ERROR_THRESHOLD = 0.10
-    _the_device = None
-    _ir_stream = None
-    _depth_stream = None
-    _color_stream = None
-    _oni_logfile = None
-
-    @classmethod
-    def _get_device(cls):
-        openni2.unload()
-        openni2.initialize()
-        openni2.configure_logging("./log", severity = 0)
-        if cls._the_device:
-            cls._the_device.close()
-        try:
-            cls._the_device = ExtendedDevice.open_any()
-        except openni2.OpenNIError as ex:
-            if "no devices found" in str(ex):
-                raise SkipTest("No device found")
-            else:
-                raise
-        
-        for name in ["_ir_stream", "_depth_stream", "_color_stream"]:
-            stream = getattr(cls, name)
-            if stream:
-                stream.close()
-                setattr(cls, name, None)
-        
-        cls._oni_logfile = openni2.get_log_filename()
-        return cls._the_device
-
-    @classmethod
-    def setUpClass(cls):
-        cls.logger = logger
+    _all_devices = ()
+    logger = logger
+    PREREQUISITES = []
     
     def setUp(self):
-        self.device = self._get_device()
-        # inserted into the report as links (only on error/failure)
-        self.report_error_links = [("OpenNI log", self._oni_logfile)]
+        """
+        Called before each test case. It will skip the test if not devices are connected
+        or if any of the predicates in ``self.PREREQUISITES`` returns ``False``
+        """
+        self.report_error_links = []
+        openni2.initialize()
+        openni2.configure_logging("./log", severity = 0)
+        self.add_log_link("OpenNI log", openni2.get_log_filename())
+        
+        self._all_devices = ExtendedDevice.open_all()
+        if not self._all_devices:
+            raise SkipTest("No devices found")
+        
+        for prereq in self.PREREQUISITES:
+            if not prereq(self):
+                raise SkipTest("Prerequisites failed: %s" % (prereq,))
+    
+    def tearDown(self):
+        """
+        called after each test case
+        """
+        for dev in self._all_devices:
+            dev.close()
+        openni2.unload()
+    
+    def add_log_link(self, name, filepath):
+        """
+        Adds a link (URL/file path) to the log
+        """
+        self.report_error_links.append((name, filepath))
+    
+    @property
+    def device(self):
+        """
+        The first device
+        """
+        return self._all_devices[0]
+    
+    @property
+    def devices(self):
+        """
+        A list of all connected devices
+        """
+        return self._all_devices
     
     def general_read_correctness(self, seconds, error_threshold = ERROR_THRESHOLD):
-        modes = [(320, 240, 30), (640, 480, 30)]
-        stream_factories = [self.get_ir_stream, self.get_color_stream, self.get_depth_stream]
-        
-        for w, h, fps in modes:
-            for streamfac in stream_factories:
-                try:
-                    stream = streamfac(w, h, fps)
-                except openni2.OpenNIError as ex:
-                    self.logger.warning("Can't configure %s at %sx%s, %s fps: %s", streamfac.__name__, w, h, fps, ex)
-                    continue
-                if not stream:
-                    self.logger.warning("Can't configure %s at %sx%s, %s fps: %s", streamfac.__name__, w, h, fps, ex)
-                    continue
-                
-                with stream:
-                    self.verify_stream_fps(stream, seconds, error_threshold)
-
-    def verify_stream_fps(self, stream, seconds, error_threshold = ERROR_THRESHOLD):
         """
-        Verifies the number of frames read from the given stream 
+        Runs each ``verify_stream_fps`` on every stream mode that's supported by any of 
+        the connected devices. For ``seconds`` and ``error_threshold`` -- see the docs of
+        ``verify_stream_fps``
+        """
+        for dev in self.devices:
+            factories = [
+                ("color", dev.get_color_stream, dev.spec.color_modes),
+                ("IR", dev.get_ir_stream, dev.spec.ir_modes),
+                ("depth", dev.get_depth_stream, dev.spec.depth_modes),
+            ]                
+            for name, factory, modes in factories:
+                for w, h, fps, fmt in modes:
+                    try:
+                        stream = factory(w, h, fps, fmt)
+                    except openni2.OpenNIError as ex:
+                        logger.warning("Can't configure %s at %sx%s, %s fps: %s", name, w, h, fps, ex)
+                        continue
+                    if not stream:
+                        logger.warning("Can't configure %s at %sx%s, %s fps: %s", name, w, h, fps, ex)
+                        continue
+                    with stream:
+                        self.verify_stream_fps(stream, seconds, error_threshold)
+
+    @classmethod
+    def verify_stream_fps(cls, stream, seconds, error_threshold = ERROR_THRESHOLD):
+        """
+        Verifies the number of frames read from the given stream.
+        
+        :param stream: the stream to test
+        :param seconds: the number of seconds (float) to wait; this controls how many frames
+                        are expected (expected frames = seconds * fps) 
+        :param error_threshold: the error threshold (a float in range 0..1). controls
+                        the allowed error-rate
         """
         mode = stream.get_video_mode()
         timestamps = []
@@ -99,67 +125,13 @@ class CrayolaTestBase(object):
         max_expected = expected * (1 + error_threshold)
         frames = len(timestamps)
         empty_frames = empty_frames[0]
-        self.logger.info("got %s frames (expected %s..%s), %d empty", frames, min_expected, max_expected, empty_frames)
+        logger.info("%sx%s@%s/%s: got %s frames (allowed %s..%s), %d empty", mode.resolutionX, mode.resolutionY,
+            mode.fps, str(mode.pixelFormat).rsplit("_", 1)[-1], frames, min_expected, max_expected, empty_frames)
         
-        assert min_expected <= frames <= max_expected, "Too few/many frames"
+        assert frames >= min_expected, "Too few frames"
+        assert frames <= max_expected, "Too many frames"
         assert empty_frames <= frames * error_threshold, "Too many empty frames"
         assert timestamps == sorted(timestamps), "Timestamps are not monotonically increasing"
-
-    @classmethod
-    def _configure_stream(cls, stream, width, height, fps, pixfmt):
-        if not stream:
-            return None
-        mode = openni2.VideoMode(fps = fps, resolutionX = width, resolutionY = height, pixelFormat = pixfmt)
-        stream.set_video_mode(mode)
-        stream.start()
-        return stream
-
-    @classmethod
-    def get_ir_stream(cls, width, height, fps, pixfmt = openni2.PIXEL_FORMAT_GRAY16):
-        """
-        Creates an IR stream with the given configuration.
-        """
-        if cls._ir_stream:
-            cls._ir_stream.close()
-        cls._ir_stream = cls._the_device.create_ir_stream()
-        return cls._configure_stream(cls._ir_stream, width, height, fps, pixfmt)
-
-    @classmethod
-    def get_depth_stream(cls, width, height, fps, pixfmt = openni2.PIXEL_FORMAT_DEPTH_1_MM):
-        """
-        Creates a depth stream with the given configuration.
-        
-        .. note:: Cannot be used in conjunction with an open IR stream. If an IR stream is open, it will be 
-        closed first
-        """
-        if cls._ir_stream:
-            cls._ir_stream.close()
-            cls._ir_stream = None
-        if cls._depth_stream:
-            cls._depth_stream.close()
-        cls._depth_stream = cls._the_device.create_depth_stream()
-        return cls._configure_stream(cls._depth_stream, width, height, fps, pixfmt)
-
-    @classmethod
-    def get_color_stream(cls, width, height, fps, pixfmt = openni2.PIXEL_FORMAT_RGB888):
-        """
-        Creates a color stream with the given configuration.
-        
-        .. note:: Cannot be used in conjunction with an open IR stream. If an IR stream is open, it will be 
-        closed first
-        """
-        if cls._ir_stream:
-            cls._ir_stream.close()
-            cls._ir_stream = None
-        if cls._color_stream:
-            cls._color_stream.close()
-        cls._color_stream = cls._the_device.create_color_stream()
-        return cls._configure_stream(cls._color_stream, width, height, fps, pixfmt)
-
-
-
-
-
 
 
 
