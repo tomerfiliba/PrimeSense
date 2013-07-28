@@ -446,22 +446,23 @@ class CBindings(object):
             elif isinstance(t, CUnion):
                 self.emit_union_fields(m, t)
         m.sep()
-        m.stmt("_dll = UnloadedDLL")
+        m.stmt("_the_dll = UnloadedDLL")
         for f in self.funcs.values():
             if self.filter_func(f):
                 self.emit_func_unloaded(m, f)
         m.sep()
         with m.def_("load_dll", "dllname"):
-            m.stmt("global _dll")
-            with m.if_("_dll"):
+            m.stmt("global _the_dll")
+            with m.if_("_the_dll"):
                 m.raise_("ValueError('DLL already loaded')")
-            m.stmt("_dll = ctypes.CDLL(dllname)")
+            m.stmt("dll = ctypes.CDLL(dllname)")
             m.sep()
             for f in self.funcs.values():
                 if not self.filter_func(f):
                     continue
                 self.emit_func_prototype(m, f)
                 m.sep()
+            m.stmt("_the_dll = dll")
         
         self.before_funcs_hook(m)
         for f in self.funcs.values():
@@ -587,7 +588,7 @@ class CBindings(object):
     
     def emit_func_prototype(self, m, func):
         m.stmt("global _{0}", func.name)
-        m.stmt("_{0} = _dll.{0}", func.name)
+        m.stmt("_{0} = dll.{0}", func.name)
         restype = func.type.get_ctype()
         if restype == "void":
             restype = None
