@@ -197,7 +197,7 @@ class HtmlReportPlugin(Plugin):
             test._html_errlink = ()
         self.curr_suite.set_result(test, "fail", "".join(traceback.format_exception(*err)))
     def addSkip(self, test):
-        self.curr_suite.set_result(test, "skip")
+        self.curr_suite.set_result(test, "skip", self.records.records)
 
     def finalize(self, result):
         doc = HtmlDocument()

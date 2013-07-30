@@ -1,5 +1,0 @@
-[nosetests]
-with-crayola-report=1
-verbosity=3
-detailed-errors=1
-

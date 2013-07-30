@@ -28,9 +28,6 @@ sudo pip install "srcgen>=1.1" || exit 1
 echo "Installing openni wrapper"
 sudo pip install -U primesense || exit 1
 
-echo `pwd`
-cp _noserc ~/.noserc
-
 cd crayola-report
 sudo python setup.py install || exit 1
 cd ..

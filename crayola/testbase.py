@@ -35,10 +35,12 @@ class CrayolaTestBase(object):
         
         self._all_devices = ExtendedDevice.open_all()
         if not self._all_devices:
+            logger.error("No devices found")
             raise SkipTest("No devices found")
         
         for prereq in self.PREREQUISITES:
             if not prereq(self):
+                logger.error("prerequisite %s failed", prereq)
                 raise SkipTest("Prerequisites failed: %s" % (prereq,))
     
     def tearDown(self):
@@ -76,23 +78,29 @@ class CrayolaTestBase(object):
         ``verify_stream_fps``
         """
         for dev in self.devices:
-            factories = [
-                ("color", dev.get_color_stream, dev.spec.color_modes),
-                ("IR", dev.get_ir_stream, dev.spec.ir_modes),
-                ("depth", dev.get_depth_stream, dev.spec.depth_modes),
-            ]                
-            for name, factory, modes in factories:
-                for w, h, fps, fmt in modes:
-                    try:
-                        stream = factory(w, h, fps, fmt)
-                    except openni2.OpenNIError as ex:
-                        logger.warning("Can't configure %s at %sx%s, %s fps: %s", name, w, h, fps, ex)
-                        continue
-                    if not stream:
-                        logger.warning("Can't configure %s at %sx%s, %s fps: %s", name, w, h, fps, ex)
-                        continue
-                    with stream:
-                        self.verify_stream_fps(stream, seconds, error_threshold)
+            self.general_read_correctness_for_device(dev, seconds, error_threshold)
+
+    def general_read_correctness_for_device(self, device, seconds, error_threshold = ERROR_THRESHOLD):
+        """
+        Like general_read_correctness, but for a specific device
+        """
+        factories = [
+            ("color", device.get_color_stream, device.spec.color_modes),
+            ("IR", device.get_ir_stream, device.spec.ir_modes),
+            ("depth", device.get_depth_stream, device.spec.depth_modes),
+        ]
+        for name, factory, modes in factories:
+            for w, h, fps, fmt in modes:
+                try:
+                    stream = factory(w, h, fps, fmt)
+                except openni2.OpenNIError as ex:
+                    logger.warning("Can't configure %s at %sx%s, %s fps: %s", name, w, h, fps, ex)
+                    continue
+                if not stream:
+                    logger.warning("Can't configure %s at %sx%s, %s fps: %s", name, w, h, fps, ex)
+                    continue
+                with stream:
+                    self.verify_stream_fps(stream, seconds, error_threshold)
 
     @classmethod
     def verify_stream_fps(cls, stream, seconds, error_threshold = ERROR_THRESHOLD):
