@@ -555,21 +555,21 @@ class Recorder(HandleObject):
 
 def convert_world_to_depth(depthStream, worldX, worldY, worldZ):
     """const VideoStream& depthStream, float worldX, float worldY, float worldZ"""
-    depthX = ctypes.c_float()
-    depthY = ctypes.c_float()
-    depthZ = ctypes.c_float()
+    out_depthX = ctypes.c_float()
+    out_depthY = ctypes.c_float()
+    out_depthZ = ctypes.c_float()
     c_api.oniCoordinateConverterWorldToDepth(depthStream._handle, worldX, worldY, worldZ,
-        ctypes.byref(depthX), ctypes.byref(depthY), ctypes.byref(depthZ))
-    return depthX.value, depthY.value, depthZ.value
+        ctypes.byref(out_depthX), ctypes.byref(out_depthY), ctypes.byref(out_depthZ))
+    return out_depthX.value, out_depthY.value, out_depthZ.value
 
 def convert_depth_to_world(depthStream, depthX, depthY, depthZ):
     """const VideoStream& depthStream, float depthX, float depthY, float depthZ, float* pWorldX, float* pWorldY, float* pWorldZ"""
-    depthX = ctypes.c_float()
-    depthY = ctypes.c_float()
-    depthZ = ctypes.c_float()
+    out_depthX = ctypes.c_float()
+    out_depthY = ctypes.c_float()
+    out_depthZ = ctypes.c_float()
     c_api.oniCoordinateConverterDepthToWorld(depthStream._handle, depthX, depthY, depthZ,
-        ctypes.byref(depthX), ctypes.byref(depthY), ctypes.byref(depthZ))
-    return depthX.value, depthY.value, depthZ.value
+        ctypes.byref(out_depthX), ctypes.byref(out_depthY), ctypes.byref(out_depthZ))
+    return out_depthX.value, out_depthY.value, out_depthZ.value
 
 def convert_depth_to_color(depthStream, colorStream, depthX, depthY, depthZ):
     """const VideoStream& depthStream, const VideoStream& colorStream, int depthX, int depthY, DepthPixel depthZ, int* pColorX, int* pColorY"""
