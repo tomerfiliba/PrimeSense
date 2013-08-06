@@ -1,9 +1,14 @@
 import sys
+import os
+import ConfigParser
 from plumbum import local, cli, FG
 from plumbum.utils import copy
 
 HERE = local.path(__file__).dirname
 ROOT = HERE.up()
+
+config = ConfigParser.ConfigParser()
+config.read(os.path.join(os.path.dirname(__file__), 'sources.ini'))
 
 class BuildPackage(cli.Application):
     upload = cli.Flag("--upload")
@@ -17,7 +22,7 @@ class BuildPackage(cli.Application):
         local.python("build_openni.py")
         local.python("build_nite.py")
         
-        from primesense import openni2
+        from primesense import openni2, nite2
         
         dist = local.path("../dist")
         dist.delete()
@@ -32,8 +37,9 @@ class BuildPackage(cli.Application):
         copy("../LICENSE", tmp)
         copy("../README.rst", tmp)
         
-        ver = "%s.%s.%s.%s" % (openni2.c_api.ONI_VERSION_MAJOR, openni2.c_api.ONI_VERSION_MINOR, 
-            openni2.c_api.ONI_VERSION_MAINTENANCE, openni2.c_api.ONI_VERSION_BUILD)
+        ver = "%s.%s.%s.%s-%s" % (openni2.c_api.ONI_VERSION_MAJOR, openni2.c_api.ONI_VERSION_MINOR, 
+            openni2.c_api.ONI_VERSION_MAINTENANCE, openni2.c_api.ONI_VERSION_BUILD, config.get("pypi", "release"))
+        
         data = local.path("setup_template.py").read().replace("$VERSION$", ver)
         (tmp / "setup.py").write(data)
         

@@ -4,7 +4,7 @@ from cbinder.generator import CBindings
 
 config = ConfigParser.ConfigParser()
 config.read(os.path.join(os.path.dirname(__file__), 'sources.ini'))
- 
+
 
 predefs = {
     "ONI_C" : ((), ""), 
