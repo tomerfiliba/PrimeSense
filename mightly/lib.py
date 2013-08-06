@@ -1,6 +1,7 @@
 import sys
 import threading
 import logging
+import subprocess
 
 logger = logging.getLogger("cmd")
 
@@ -46,8 +47,9 @@ class RemoteCommandError(Exception):
             lines.append(self.err)
         return "\n\n".join(lines)
 
-def remote_run(conn, args, cwd = None, allow_failure = False):
-    proc = conn.modules.subprocess.Popen(args, cwd = None)
+def remote_run(conn, args, cwd = None, allow_failure = False, env = None):
+    proc = conn.modules.subprocess.Popen(args, cwd = None, env = env, 
+        stdin = subprocess.PIPE, stderr = subprocess.PIPE, stdout = subprocess.PIPE)
     logger.debug("   Running %r on %s (pid %d)", args, conn._config["connid"], proc.pid)
     out, err = proc.communicate()
     rc = proc.wait()

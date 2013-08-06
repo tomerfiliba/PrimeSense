@@ -22,7 +22,8 @@ class Host(object):
 
 class REQUIRED(object):
     pass
-
+class REMOVED(object):
+    pass
 
 class Task(object):
     NOT_RUN = 0
@@ -42,7 +43,7 @@ class Task(object):
         for cls in reversed(self.__class__.mro()):
             ALL_ATTRS.update(getattr(cls, "ATTRS", ()))
         for k, v in kwargs.items():
-            if k not in ALL_ATTRS:
+            if k not in ALL_ATTRS or ALL_ATTRS.get(k) is REMOVED:
                 raise TypeError("Invalid keyword argument %r" % (k,))
             setattr(self, k, v)
         for k, default in ALL_ATTRS.items():
@@ -73,6 +74,7 @@ class Task(object):
             parallelize(dep.run for dep in self.dependencies)
         logger.info("Running %s", self)
         self._run()
+        logger.info("%s is done", self)
         
         with self._lock:
             self._state = self.FINISHED
@@ -109,7 +111,7 @@ class GitBuilder(Task):
             self.outputs[host] = {}
             with host.connect() as conn:
                 conn._config["connid"] = host.hostname
-                logger.info("Building %s/%s on %r", self, plat.name, host.hostname)
+                logger.info("Building %s:%s on %r", self, plat.name, host.hostname)
                 output = self._build(host, conn, plat)
                 self.outputs[host][plat.name] = output
                 logger.info("Built %r", output)
@@ -119,6 +121,7 @@ class GitBuilder(Task):
     
     @contextmanager
     def gitrepo(self, conn, path):
+        logger.info("Fetching git repo %s on %s", path, conn._config["connid"])
         prevcwd = conn.modules.os.getcwd()
         if not conn.modules.os.path.exists(path):
             conn.modules.os.makedirs(path)
@@ -164,11 +167,50 @@ class NiteBuilder(GitBuilder):
     ATTRS = {"openni_task" : REQUIRED}
 
     def _build(self, host, conn, platform):
-        pass
+        path = conn.modules.os.path.join(host.outputs, "NiTE2", platform.name)
+        
+        with self.gitrepo(conn, path):
+            conn.modules.os.chdir("SDK/Packaging")
+            env = conn.modules.os.environ.copy()
+            openni_inc = conn.modules.glob.glob(conn.modules.os.path.join(
+                host.outputs, "OpenNI2", platform.name, "Packaging/OpenNI-*/Include"))
+            if not openni_inc:
+                openni_inc = conn.modules.glob.glob(conn.modules.os.path.join(
+                host.outputs, "OpenNI2", platform.name, "Packaging/Output*/Include"))
+            openni_redist = conn.modules.glob.glob(conn.modules.os.path.join(
+                host.outputs, "OpenNI2", platform.name, "Packaging/OpenNI-*/Redist"))
+            if not openni_redist:
+                openni_redist = conn.modules.glob.glob(conn.modules.os.path.join(
+                host.outputs, "OpenNI2", platform.name, "Packaging/Output*/Redist"))
+            
+            env["OPENNI2_INCLUDE"] = openni_inc[0]
+            env["OPENNI2_REDIST"] = openni_redist[0]
+
+            remote_run(conn, platform.command, env = env)
+            return [conn.modules.os.path.abspath(f)
+                for f in conn.modules.glob.glob(platform.output_pattern)][0]
 
 
 class WrapperBuilder(GitBuilder):
-    ATTRS = {"host" : REQUIRED, "openni_task" : REQUIRED, "nite_task" : REQUIRED}
+    GIT_REPO = "ssh://git/localhome/GIT/Research/ComputerVision/Common.git"
+    ATTRS = {"host" : REQUIRED, "hosts" : REMOVED}
+    
+    def _run(self):
+        with self.host.connect() as conn:
+            conn._config["connid"] = self.host.hostname
+            path = conn.modules.os.path.join(self.host.outputs, "PythonWrapper")
+            openni_include = conn.modules.glob.glob(conn.modules.os.path.join(
+                self.host.outputs, "OpenNI2", "linux64", "Packaging/OpenNI-*/Include"))[0]
+            nite_include = conn.modules.glob.glob(conn.modules.os.path.join(
+                self.host.outputs, "NiTE2", "linux64", "Packaging/OpenNI-*/Include"))[0]
+            
+            with self.gitrepo(conn, path):
+                conn.modules.os.chdir("bin")
+                with conn.builtin.open("sources.ini", "w") as f:
+                    f.write("[headers]\nopenni_include_dir=%s\nnite_include_dir=%s\n" % (openni_include, nite_include))
+                remote_run(conn, "python", "build_all.py")
+                return conn.modules.glob.glob("../dist/*.tar.gz")
+
 
 class FirmwareBuilder(GitBuilder):
     ATTRS = {"host" : REQUIRED}
