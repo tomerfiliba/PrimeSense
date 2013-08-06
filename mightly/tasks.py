@@ -49,10 +49,6 @@ wrapper_task = WrapperBuilder([openni_task, nite_task], host = sdk64)
 # )
 #  
 # crayola_task = CrayolaTester([wrapper_task, fw_task_eva], 
-#     openni_task = openni_task, 
-#     nite_task = nite_task,
-#     wrapper_task = wrapper_task, 
-#     fw_task = fw_task_eva,
 #     hosts = [buildserver, sdk64, sdk32, softwaremac],
 # )
 #  

@@ -203,25 +203,50 @@ class WrapperBuilder(GitBuilder):
                 self.host.outputs, "OpenNI2", "linux64", "Packaging/OpenNI-*/Include"))[0]
             nite_include = conn.modules.glob.glob(conn.modules.os.path.join(
                 self.host.outputs, "NiTE2", "linux64", "Packaging/OpenNI-*/Include"))[0]
-            
+                        
             with self.gitrepo(conn, path):
+                logger.info("Installing python wrapper dependencies")
+                remote_run(conn, ["sudo", "pip", "install", "-r", "requires.txt"])
+
                 conn.modules.os.chdir("bin")
                 with conn.builtin.open("sources.ini", "w") as f:
                     f.write("[headers]\nopenni_include_dir=%s\nnite_include_dir=%s\n" % (openni_include, nite_include))
+                logger.info("Building OpenNI wrapper")
                 remote_run(conn, "python", "build_all.py")
-                return conn.modules.glob.glob("../dist/*.tar.gz")
+                self.outputs = [conn.modules.os.path.abspath(conn.modules.glob.glob("../dist/*.tar.gz")[0])]
+                logger.info("Built %s", self.outputs[0])
 
 
 class FirmwareBuilder(GitBuilder):
-    ATTRS = {"host" : REQUIRED}
+    GIT_REPO = "ssh://git/localhome/GIT/Research/ComputerVision/Common.git"
+    ATTRS = {"host" : REQUIRED, "hosts" : REMOVED}
+    
+    def _run(self):
+        with self.host.connect() as conn:
+            conn._config["connid"] = self.host.hostname
+            path = conn.modules.os.path.join(self.host.outputs, "Firmware")
+            #openni_include = conn.modules.glob.glob(conn.modules.os.path.join(
+            #    self.host.outputs, "OpenNI2", "linux64", "Packaging/OpenNI-*/Include"))[0]
+            #nite_include = conn.modules.glob.glob(conn.modules.os.path.join(
+            #    self.host.outputs, "NiTE2", "linux64", "Packaging/OpenNI-*/Include"))[0]
+                        
+            with self.gitrepo(conn, path):
+                pass
 
 
 class CrayolaTester(Task):
-    ATTRS = {"hosts" : REQUIRED, "openni_task" : REQUIRED, "nite_task" : REQUIRED, "wrapper_task" : REQUIRED}
+    ATTRS = {"hosts" : REQUIRED}
     
     def _run(self):
-        pass
-
+        for host in self.hosts:
+            self._run_on_host(host)
+    
+    def _run_on_host(self, host):
+        self._install_openni()
+        self._install_nite()
+        self._install_python_packages()
+        self._upload_firmware()
+        self._run_crayola()
 
 
 
