@@ -313,7 +313,7 @@ class Device(HandleObject):
     def is_file(self):
         return (self.is_property_supported(c_api.ONI_DEVICE_PROPERTY_PLAYBACK_SPEED) and
             self.is_property_supported(c_api.ONI_DEVICE_PROPERTY_PLAYBACK_REPEAT_ENABLED) and
-            self.is_property_supported(c_api.ONI_DEVICE_COMMAND_SEEK))
+            self.is_command_supported(c_api.ONI_DEVICE_COMMAND_SEEK))
 
     def get_depth_color_sync_enabled(self):
         return bool(c_api.oniDeviceGetDepthColorSyncEnabled(self._handle))
