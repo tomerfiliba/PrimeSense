@@ -2,6 +2,9 @@ import sys
 import threading
 import logging
 import subprocess
+from MimeWriter import MimeWriter
+from smtplib import SMTP
+from cStringIO import StringIO
 
 
 def parallelize(iterator):
@@ -70,6 +73,32 @@ def remote_run(conn, args, cwd = None, allow_failure = False, env = None, logger
         raise RemoteCommandError(conn._config["connid"], args, cwd, rc, out, err)
     return out
 
+def sendmail(mailserver, from_addr, to_addrs, subject, text, attachments = ()):
+    message = StringIO()
+    writer = MimeWriter(message)
+    writer.addheader('MIME-Version', '1.0')
+    writer.addheader('Subject', subject)
+    writer.startmultipartbody('mixed')
+
+    part = writer.nextpart()
+    body = part.startbody('text/html')
+    body.write(text)
+
+    for fn in attachments:
+        part = writer.nextpart()
+        part.addheader('Content-Transfer-Encoding', 'base64')
+        if fn.endswith(".htm") or fn.endswith(".html"):
+            body = part.startbody('text/html; name=%s' % (fn,))
+        else:
+            body = part.startbody('text/plain; name=%s' % (fn,))
+        with open(fn, 'rb') as f:
+            body.write(f.read().encode("base64"))
+
+    writer.lastpart()
+
+    smtp = SMTP(mailserver)
+    smtp.sendmail(from_addr, to_addrs, message.getvalue())
+    smtp.quit()
 
 
 

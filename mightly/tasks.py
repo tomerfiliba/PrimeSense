@@ -43,30 +43,35 @@ nite_task = NiteBuilder([openni_task], hosts = {
     ],
 })
 
-wrapper_task = WrapperBuilder([openni_task, nite_task], host = sdk64, platform = "linux64")
+wrapper_task = WrapperBuilder([openni_task, nite_task], 
+    host = sdk64, platform = "linux64")
 
-def FW(name, branch, flag):
+def FW(name, branch, flavor):
     return FirmwareBuilder([], branch = branch,
         hosts = {
-            buildserver : [BuildPlatform(name, ["build_server_release.bat", flag, "Release"], None)]
+            buildserver : [BuildPlatform(name, ["build_server_release.bat", flavor, "Release"], output_pattern = "Redist/Release")]
         }
     )
 
 fw_eva_streams = FW("eva_streams", "EvaDevkitDevelop", "EVA_REVC_EVA_STREAMS")
 fw_eva_depth_ir = FW("eva_depth_ir", "EvaDevkitDevelop", "EVA_REVC_DEPTH_IR_STREAMS")
 fw_eva_motion_control = FW("eva_motion_control", "EvaDevkitDevelop", "EVA_REVC_MOTION_CONTROL")
-fw_eva = FW("eva", "EDEV", "EVA")
-fw_eva_debug = FW("eva_debug", "EDEV", "EVA_DEBUG")
-fw_eva_edev = FW("eva_edev", "EDEV", "EDEV")
+# fw_eva = FW("eva", "EDEV", "EVA")
+# fw_eva_debug = FW("eva_debug", "EDEV", "EVA_DEBUG")
+# fw_eva_edev = FW("eva_edev", "EDEV", "EDEV")
 
 
-crayola_task = CrayolaTester([wrapper_task],
+crayola_task = CrayolaTester([wrapper_task, fw_eva_streams],
     openni_task = openni_task, 
     nite_task = nite_task,
     wrapper_task = wrapper_task,
-    fw_task = None,
+    fw_task = fw_eva_streams,
+    to_addrs = ["tomerfiliba@gmail.com"],
     hosts = {
+        #buildserver : ["win64"],
         sdk64 : ["linux64"],
+        #sdk32 : ["linux32"],
+        #softwaremac : ["osx"],
     }
 )
 

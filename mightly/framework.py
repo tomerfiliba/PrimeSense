@@ -3,11 +3,19 @@ import threading
 import logging
 from functools import partial
 from contextlib import contextmanager
-from mightly.lib import parallelize, remote_run, RemoteCommandError
+from mightly.lib import parallelize, remote_run, RemoteCommandError, sendmail
+import shutil
+from glob import glob
 
 
-logging.basicConfig(level = logging.DEBUG, format = "%(asctime)s|%(thread)04d| %(name)-32s| %(message)s",
+logging.basicConfig(level = logging.INFO, format = "%(asctime)s|%(thread)04d| %(name)-32s| %(message)s",
     datefmt = "%H:%M:%S")
+fh = logging.FileHandler("mightly.log")
+fmt = logging.Formatter(format = "%(asctime)s|%(thread)04d| %(name)-32s| %(message)s", datefmt = "%H:%M:%S")
+fh.setFormatter(fmt)
+fh.setLevel(logging.DEBUG)
+logging.root.addHandler(fh)
+
 
 class Host(object):
     def __init__(self, hostname, outputs, installs, rpyc_port = 18861):
@@ -188,13 +196,16 @@ class GitBuilder(Task):
                         with conn.builtin.open(last_head_fn, "w") as f:
                             f.write(head)
                     
-                    output = [conn.modules.os.path.abspath(f)
-                        for f in conn.modules.glob.glob(conn.modules.os.path.join(root, plat.output_pattern))]
-                    if len(output) == 1:
-                        output = output[0]
-                    if not output:
-                        raise ValueError("No outputs found for %s %s (%s)" % (self, plat.name, host.hostname))
-                    assert output
+                    if plat.output_pattern:
+                        output = [conn.modules.os.path.abspath(f)
+                            for f in conn.modules.glob.glob(conn.modules.os.path.join(root, plat.output_pattern))]
+                        if len(output) == 1:
+                            output = output[0]
+                        if not output:
+                            raise ValueError("No outputs found for %s %s (%s)" % (self, plat.name, host.hostname))
+                        assert output
+                    else:
+                        output = None
                     self.outputs[host][plat.name] = output
                     if need_build:
                         logger.info("Built %r", output)
@@ -213,7 +224,7 @@ class OpenNIBuilder(GitBuilder):
     
     @classmethod
     def get_repo_root(cls, host, conn, platform):
-        return conn.modules.os.path.join(host.outputs, "OpenNI2", platform.name)
+        return conn.modules.os.path.join(host.outputs, "OpenNI2", getattr(platform, "name", platform))
     
     def _build(self, host, conn, platform, logger):
         conn.modules.os.chdir("Packaging")
@@ -225,7 +236,7 @@ class NiteBuilder(GitBuilder):
 
     @classmethod
     def get_repo_root(cls, host, conn, platform):
-        return conn.modules.os.path.join(host.outputs, "NiTE2", platform.name)
+        return conn.modules.os.path.join(host.outputs, "NiTE2", getattr(platform, "name", platform))
 
     def _build(self, host, conn, platform, logger):
         conn.modules.os.chdir("SDK/Packaging")
@@ -263,8 +274,7 @@ class WrapperBuilder(GitBuilder):
     ATTRS = {"host" : REQUIRED, "hosts" : REMOVED, "platform" : REQUIRED, "branch" : "master"}
     
     def _run(self):
-        self.platform = BuildPlatform(self.platform, None, None)
-        logger = logging.getLogger("%s %s/%s" % (self.__class__.__name__, self.host.hostname, self.platform.name))
+        logger = logging.getLogger("%s %s/%s" % (self.__class__.__name__, self.host.hostname, self.platform))
         with self.host.connect() as conn:
             conn._config["connid"] = self.host.hostname
             oni_repo = OpenNIBuilder.get_repo_root(self.host, conn, self.platform)
@@ -290,12 +300,8 @@ class WrapperBuilder(GitBuilder):
 
             with self.gitrepo(conn, path, logger = logger):
                 logger.info("Installing python wrapper dependencies")
-                try:
-                    remote_run(conn, ["which", "sudo"], logger = logger)
-                except RemoteCommandError:
-                    remote_run(conn, ["pip", "install", "-r", "requires.txt"], logger = logger)
-                else:
-                    remote_run(conn, ["sudo", "pip", "install", "-r", "requires.txt"], logger = logger)
+                sudo = [] if conn.modules.sys.platform == "win32" else ["sudo"]
+                remote_run(conn, sudo + ["pip", "install", "-r", "requires.txt"], logger = logger)
 
                 conn.modules.os.chdir("bin")
                 with conn.builtin.open("sources.ini", "w") as f:
@@ -308,7 +314,7 @@ class WrapperBuilder(GitBuilder):
                 logger.info("Building OpenNI wrapper")
                 remote_run(conn, ["python", "build_all.py"], logger = logger)
                 dist = conn.modules.os.path.abspath(conn.modules.glob.glob("../dist/*.tar.gz")[0])
-                self.outputs = {self.host : {self.platform.name : dist}}
+                self.outputs = {self.host : {getattr(self.platform, "name", self.platform) : dist}}
                 logger.info("Built %s", dist)
 
 
@@ -317,24 +323,25 @@ class FirmwareBuilder(GitBuilder):
 
     @classmethod
     def get_repo_root(cls, host, conn, platform):
-        return conn.modules.os.path.join(host.outputs, "OpenNI2", platform.name)
+        return conn.modules.os.path.join(host.outputs, "Firmware", getattr(platform, "name", platform))
     
     def _build(self, host, conn, platform, logger):
         conn.modules.os.chdir("Redist")
         remote_run(conn, platform.command, logger = logger)
-        # copy to Release
-    
+
 
 
 class CrayolaTester(Task):
     GIT_REPO = "ssh://git/localhome/GIT/Software/Nightly.git"
     GIT_BRANCH = "crayola"
     ATTRS = {"hosts" : REQUIRED, "openni_task" : REQUIRED, "nite_task" : REQUIRED, 
-        "wrapper_task" : REQUIRED, "fw_task" : REQUIRED}
+        "wrapper_task" : REQUIRED, "fw_task" : REQUIRED, "mail_server" : "ex2010",
+        "from_addr" : "NightlyUpdate@primesense.com", "to_addrs" : REQUIRED}
     
     def _run(self):
         for host, platforms in self.hosts.items():
             self._run_on_host(host, platforms)
+        self.email_report()
     
     def _run_on_host(self, host, platforms):
         first_time = True
@@ -347,8 +354,7 @@ class CrayolaTester(Task):
                 self._install_nite(host, conn, platname, logger)
                 if first_time:
                     self._install_python_packages(host, conn, platname, logger)
-                    self._install_crayola(host, conn, platname, logger)
-                    self._upload_firmware(host, conn, platname, logger)
+                    self._upload_firmware(host, conn, logger)
                 self._run_crayola(host, conn, platname, logger)
             first_time = False
     
@@ -360,7 +366,7 @@ class CrayolaTester(Task):
         logger.info("Installing %s", target)
         if artifact.endswith(".msi"):
             logger.debug("Installing %s", artifact)
-            remote_run(conn, ["msiexec", "/i", artifact, "/quiet"])
+            remote_run(conn, ["msiexec", "/i", artifact, "/quiet"], logger = logger)
         else:
             destdir = path_join(host.installs, platname, target)
             conn.modules.shutil.rmtree(destdir, ignore_errors = True)
@@ -378,25 +384,67 @@ class CrayolaTester(Task):
         self._install_artifact(self.nite_task, host, conn, platname, logger)
 
     def _install_python_packages(self, host, conn, platname, logger):
-        artifact = self.wrapper_task.outputs[host][platname]
         logger.info("Installing python packages")
-        remote_run(conn, ["sudo", "pip", "install", "nose"], logger = logger)
-        remote_run(conn, ["sudo", "pip", "install", "srcgen>=1.1"], logger = logger)
-        remote_run(conn, ["sudo", "pip", "install", "-U", artifact], logger = logger)
+        sudo = [] if conn.modules.sys.platform == "win32" else ["sudo"]
+        remote_run(conn, sudo + ["pip", "install", "nose"], logger = logger)
+        remote_run(conn, sudo + ["pip", "install", "srcgen>=1.1"], logger = logger)
         
-    def _install_crayola(self, host, conn, platname, logger):
-        logger.info("Installing crayola")
-        path = conn.modules.os.path.join(host.installs, "crayola")
-        with gitrepo(conn, path, self.GIT_REPO, self.GIT_BRANCH, logger) as repo:
-            remote_run(conn, ["sudo", "python", "setup.py", "install"], cwd = "crayola-report", logger = logger)
-            remote_run(conn, ["sudo", "python", "setup.py", "install"], cwd = "crayola", logger = logger)
-
-    def _upload_firmware(self, host, conn, platname, logger):
-        logger.info("Uploading firmware")
+        [(wrapper_host, wrapper_plat)] = self.wrapper_task.outputs.items()
+        artifact = wrapper_plat.values()[0]
+        
+        with wrapper_host.connect() as wrapper_conn:
+            tmpdir = conn.modules.tempfile.gettempdir()
+            dst = conn.modules.os.path.join(tmpdir, wrapper_conn.modules.os.path.basename(artifact))
+            logger.info("Copying %s:%s to %s:%s", wrapper_host.hostname, artifact, host.hostname, dst)
+            with wrapper_conn.builtin.open(artifact, "rb") as srcf, conn.builtin.open(dst, "wb") as dstf:
+                shutil.copyfileobj(srcf, dstf)
+        
+        remote_run(conn, sudo + ["pip", "install", "-U", dst], logger = logger)
+        
+    def _upload_firmware(self, host, conn, logger):
+        if not self.fw_task:
+            return
+        logger.info("Uploading firmware %s", self.fw_task)
 
     def _run_crayola(self, host, conn, platname, logger):
-        print "hello world"
+        logger.info("Installing crayola")
+        path = conn.modules.os.path.join(host.installs, "crayola")
+        with gitrepo(conn, path, self.GIT_REPO, self.GIT_BRANCH, logger):
+            sudo = [] if conn.modules.sys.platform == "win32" else ["sudo"]
+            remote_run(conn, sudo + ["python", "setup.py", "install"], cwd = "crayola-report", logger = logger)
+            remote_run(conn, sudo + ["python", "setup.py", "install"], cwd = "crayola", logger = logger)
 
+            oni_repo = OpenNIBuilder.get_repo_root(host, conn, platname)
+            glob = conn.modules.glob.glob
+            path_join = conn.modules.os.path.join
+            outputs_path = glob(path_join(oni_repo, "Packaging", "OpenNI-*"))
+            if not outputs_path:
+                outputs_path = glob(path_join(oni_repo, "Packaging", "Output*"))
+            outputs_path = outputs_path[0]
+            
+            env = conn.modules.os.environ.copy()
+            env["OPENNI2_INCLUDE"] = path_join(outputs_path, "Include")
+            env["OPENNI2_REDIST"] = path_join(outputs_path, "Redist")
+            if "PATH" in env:
+                env["PATH"] = env["PATH"] + conn.modules.os.path.pathsep + "/usr/local/bin"
+            else:
+                env["PATH"] = "/usr/local/bin"
+            
+            logger.info("Running tests")
+            try:
+                remote_run(conn, ["nosetests", "-vv", "-d", "--with-crayola-report"],
+                    cwd = "tests", env = env, logger = logger)
+            except RemoteCommandError:
+                logger.error("nosetests failed", exc_info = True)
+            try:
+                rpyc.classic.download(conn, "tests/nose_report.html", 
+                    "nose-report-%s-%s.html" % (host.hostname, platname))
+            except (IOError, OSError, ValueError):
+                pass
+
+    def email_report(self):
+        sendmail(self.mail_server, self.from_addr, self.to_addrs, "Nighly report", "Everything is on fire",
+            attachments = glob("nose-report-*.html"))
 
 
 

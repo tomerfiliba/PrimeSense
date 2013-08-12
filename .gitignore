@@ -10,4 +10,5 @@ dist
 build
 *.html
 .settings
+*.log
 
