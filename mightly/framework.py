@@ -380,16 +380,16 @@ class CrayolaTester(Task):
     def _install_python_packages(self, host, conn, platname, logger):
         artifact = self.wrapper_task.outputs[host][platname]
         logger.info("Installing python packages")
-        remote_run(conn, ["sudo", "pip", "install", "nose"])
-        remote_run(conn, ["sudo", "pip", "install", "srcgen>=1.1"])
-        remote_run(conn, ["sudo", "pip", "install", "-U", artifact])
+        remote_run(conn, ["sudo", "pip", "install", "nose"], logger = logger)
+        remote_run(conn, ["sudo", "pip", "install", "srcgen>=1.1"], logger = logger)
+        remote_run(conn, ["sudo", "pip", "install", "-U", artifact], logger = logger)
         
     def _install_crayola(self, host, conn, platname, logger):
         logger.info("Installing crayola")
         path = conn.modules.os.path.join(host.installs, "crayola")
         with gitrepo(conn, path, self.GIT_REPO, self.GIT_BRANCH, logger) as repo:
-            remote_run(conn, ["sudo", "python", "setup.py", "install"], cwd = "crayola-report")
-            remote_run(conn, ["sudo", "python", "setup.py", "install"], cwd = "crayola")
+            remote_run(conn, ["sudo", "python", "setup.py", "install"], cwd = "crayola-report", logger = logger)
+            remote_run(conn, ["sudo", "python", "setup.py", "install"], cwd = "crayola", logger = logger)
 
     def _upload_firmware(self, host, conn, platname, logger):
         logger.info("Uploading firmware")

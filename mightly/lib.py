@@ -37,15 +37,16 @@ def parallelize(iterator):
     return output
 
 class RemoteCommandError(Exception):
-    def __init__(self, host, args, rc, out, err):
-        Exception.__init__(self, host, args, rc, out, err)
+    def __init__(self, host, args, cwd, rc, out, err):
+        Exception.__init__(self, host, args, cwd, rc, out, err)
         self.host = host
         self.args = args
+        self.cwd = cwd
         self.rc = rc
         self.out = out
         self.err = err
     def __str__(self):
-        lines = ["%s: %s returned %r" % (self.host, self.args, self.rc)]
+        lines = ["%s: %s returned %r (cwd = %r)" % (self.host, self.args, self.rc, self.cwd)]
         if self.out:
             lines.append("stdout:\n    | " + "\n    | ".join(self.out.splitlines()))
         if self.err:
@@ -61,8 +62,10 @@ def remote_run(conn, args, cwd = None, allow_failure = False, env = None, logger
     out, err = proc.communicate()
     rc = proc.wait()
     if not allow_failure and rc != 0:
-        logger.error(">>> %r (%d) FAILED, returned %d", " ".join(args), proc.pid, rc)
-        raise RemoteCommandError(conn._config["connid"], args, rc, out, err)
+        logger.error(">>> %r (%d) exited with %d", " ".join(args), proc.pid, rc)
+        if not cwd:
+            cwd = conn.modules.os.getcwd()
+        raise RemoteCommandError(conn._config["connid"], args, cwd, rc, out, err)
     return out
 
 
