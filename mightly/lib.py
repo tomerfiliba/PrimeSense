@@ -65,6 +65,8 @@ def remote_run(conn, args, cwd = None, allow_failure = False, env = None, logger
         logger.error(">>> %r (%d) exited with %d", " ".join(args), proc.pid, rc)
         if not cwd:
             cwd = conn.modules.os.getcwd()
+        else:
+            cwd = conn.modules.os.path.abspath(cwd)
         raise RemoteCommandError(conn._config["connid"], args, cwd, rc, out, err)
     return out
 
