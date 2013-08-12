@@ -11,7 +11,7 @@ from glob import glob
 logging.basicConfig(level = logging.INFO, format = "%(asctime)s|%(thread)04d| %(name)-32s| %(message)s",
     datefmt = "%H:%M:%S")
 fh = logging.FileHandler("mightly.log")
-fmt = logging.Formatter(format = "%(asctime)s|%(thread)04d| %(name)-32s| %(message)s", datefmt = "%H:%M:%S")
+fmt = logging.Formatter("%(asctime)s|%(thread)04d| %(name)-32s| %(message)s", datefmt = "%H:%M:%S")
 fh.setFormatter(fmt)
 fh.setLevel(logging.DEBUG)
 logging.root.addHandler(fh)
