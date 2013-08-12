@@ -3,9 +3,9 @@ import threading
 import logging
 import subprocess
 
-logger = logging.getLogger("cmd")
 
 def parallelize(iterator):
+    logger = logging.getLogger("parallelize")
     results = {}
     def run(i, func):
         try:
@@ -22,13 +22,18 @@ def parallelize(iterator):
     for thd in threads:
         thd.join()
     output = [None] * len(threads)
+    first_error = None
     for i in range(len(threads)):
         succ, obj = results[i]
         if succ:
             output[i] = obj
         else:
-            t, v, tb = obj
-            raise t, v, tb
+            logger.error("Parallel task failed", exc_info = obj)
+            if first_error is None:
+                first_error = obj
+    if first_error:
+        t, v, tb = first_error
+        raise t, v, tb
     return output
 
 class RemoteCommandError(Exception):
@@ -42,20 +47,24 @@ class RemoteCommandError(Exception):
     def __str__(self):
         lines = ["%s: %s returned %r" % (self.host, self.args, self.rc)]
         if self.out:
-            lines.append(self.out)
+            lines.append("stdout:\n    | " + "\n    | ".join(self.out.splitlines()))
         if self.err:
-            lines.append(self.err)
-        return "\n\n".join(lines)
+            lines.append("stderr:\n    | " + "\n    | ".join(self.err.splitlines()))
+        return "\n".join(lines)
 
-def remote_run(conn, args, cwd = None, allow_failure = False, env = None):
-    proc = conn.modules.subprocess.Popen(args, cwd = None, env = env, 
+def remote_run(conn, args, cwd = None, allow_failure = False, env = None, logger = None):
+    proc = conn.modules.subprocess.Popen(args, cwd = cwd, env = env, 
         stdin = subprocess.PIPE, stderr = subprocess.PIPE, stdout = subprocess.PIPE)
-    logger.debug("   Running %r on %s (pid %d)", args, conn._config["connid"], proc.pid)
+    if not logger:
+        logger = logging.getLogger(conn._config["connid"])
+    logger.debug("Running %r (pid %d)", " ".join(args), proc.pid)
     out, err = proc.communicate()
     rc = proc.wait()
-    logger.debug("      %d: returned %r", proc.pid, rc)
     if not allow_failure and rc != 0:
-        logger.error("      stderr: %s", err)
+        logger.error(">>> %r (%d) FAILED, returned %d", " ".join(args), proc.pid, rc)
         raise RemoteCommandError(conn._config["connid"], args, rc, out, err)
     return out
+
+
+
 
