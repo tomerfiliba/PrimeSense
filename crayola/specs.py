@@ -54,8 +54,6 @@ class PS1080Spec(DeviceSpec):
         (160, 120, 30, openni2.PIXEL_FORMAT_DEPTH_100_UM),
         (320, 240, 30, openni2.PIXEL_FORMAT_DEPTH_1_MM),
         (320, 240, 30, openni2.PIXEL_FORMAT_DEPTH_100_UM),
-        (320, 240, 60, openni2.PIXEL_FORMAT_DEPTH_1_MM),
-        (320, 240, 60, openni2.PIXEL_FORMAT_DEPTH_100_UM),
         (640, 480, 30, openni2.PIXEL_FORMAT_DEPTH_1_MM),
         (640, 480, 30, openni2.PIXEL_FORMAT_DEPTH_100_UM),
     ]
