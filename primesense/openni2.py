@@ -262,7 +262,7 @@ class Device(HandleObject):
         return self.get_sensor_info(sensor_type) is not None
 
     def create_stream(self, sensor_type):
-        return VideoMode(self, sensor_type)
+        return VideoStream(self, sensor_type)
 
     def create_depth_stream(self):
         if not self.has_sensor(SENSOR_DEPTH):
@@ -328,7 +328,6 @@ class Device(HandleObject):
 class VideoFrame(HandleObject):
     def __init__(self, pframe):
         self._frame = pframe[0]
-        c_api.oniFrameAddRef(pframe)
         HandleObject.__init__(self, pframe)
         _registered_video_frames.add(self)
     def _close(self):
