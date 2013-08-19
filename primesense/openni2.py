@@ -294,12 +294,12 @@ class Device(HandleObject):
     def is_property_supported(self, property_id):
         return bool(c_api.oniDeviceIsPropertySupported(self._handle, property_id))
 
-    def invoke(self, command_id, data = None, size = None):
-        if data is None:
-            size = 0
-        else:
-            data, size = _py_to_ctype_obj(data)
-        c_api.oniDeviceInvoke(self._handle, command_id, data, size)
+    def invoke(self, command_id, data, size = None):
+        data, size = _py_to_ctype_obj(data)
+        if size is None:
+            size = ctypes.sizeof(data)
+        c_api.oniDeviceInvoke(self._handle, command_id, ctypes.byref(data), size)
+		
     def is_command_supported(self, command_id):
         return bool(c_api.oniDeviceIsCommandSupported(self._handle, command_id))
 
