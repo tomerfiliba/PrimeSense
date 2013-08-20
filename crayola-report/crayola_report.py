@@ -20,7 +20,7 @@ class Suite(object):
         self.name = name
         self.filename = filename
         self.tests = []
-        self.status = "ok"
+        self.general_status = "ok"
 
     def add_test(self, test):
         test._html_start_time = time.time()
@@ -48,21 +48,15 @@ class Suite(object):
             proc = psutil.Process(os.getpid())
             test._html_cpumem = (proc.get_cpu_percent(), proc.get_memory_percent())
         
-        if self.status == "ok":
-            if status == "skip":
-                self.status = "skip"
-            if status == "error":
-                self.status = "error"
-            
-        if status == "error":
-            self.all_ok = False
+        statuses = ["error", "fail", "skip", "ok"]
+        self.general_status = min(self.general_status, status, key = statuses.index)
     
     def to_html(self, doc):
         if not self.tests:
             return
-        with doc.div(class_ = "test_suite" + (" test_suite_all_ok" if self.all_ok else "")):
+        with doc.div(class_ = "test_suite" + (" test_suite_all_ok" if self.general_status == "ok" else "")):
             with doc.subelem("details"):
-                with doc.subelem("summary", class_ = "ok" if self.all_ok else "fail"):
+                with doc.subelem("summary", class_ = self.general_status):
                     doc.span(self.name, class_ = "test_name")
                     doc.span("Module: ", self.filename, class_ = "test_file")
                 with doc.table(class_ = "results"):
@@ -310,7 +304,11 @@ class HtmlReportPlugin(Plugin):
                 css["padding"] = "5px"
                 with css(".ok"):
                     css["background-color"] = "rgb(139, 248, 66)"
+                with css(".skip"):
+                    css["background-color"] = "#dd1122"
                 with css(".fail"):
+                    css["background-color"] = "rgb(236, 175, 141)"
+                with css(".error"):
                     css["background-color"] = "rgb(236, 175, 141)"
             with css("span.test_name"):
                 css["font-weight"] = "bold"

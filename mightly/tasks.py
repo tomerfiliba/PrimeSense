@@ -67,8 +67,8 @@ crayola_task = CrayolaTester([wrapper_task, fw_eva_streams],
     wrapper_task = wrapper_task,
     fw_task = fw_eva_streams,
     hosts = {
-        buildserver : ["win64"],
-        #sdk64 : ["linux64"],
+        #buildserver : ["win64"],
+        sdk64 : ["linux64"],
         #sdk32 : ["linux32"],
         #softwaremac : ["osx"],
     }

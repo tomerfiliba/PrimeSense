@@ -2,8 +2,8 @@ from crayola import CrayolaTestBase
 
 
 class TestResets(CrayolaTestBase):
-    NUM_SOFT_RESETS = 1
-    NUM_HARD_RESETS = 1
+    NUM_SOFT_RESETS = 4
+    NUM_HARD_RESETS = 2
     
     def test_soft_resets(self):
         for _ in range(self.NUM_SOFT_RESETS):
