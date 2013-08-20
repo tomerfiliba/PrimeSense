@@ -128,7 +128,18 @@ class CrayolaTestBase(object):
         time.sleep(seconds)
         stream.unregister_new_frame_listener(callback)
         
-        expected = mode.fps * seconds
+        expected_fps = mode.fps
+        
+        if stream.get_sensor_info().sensorType == openni2.SENSOR_IR and mode.resolutionX == 1280:
+            expected_fps = 9
+        elif stream.get_sensor_info().sensorType == openni2.SENSOR_COLOR and mode.resolutionX == 1280:
+            if mode.resolutionY == 1024:
+                expected_fps = 7
+            elif mode.resolutionY == 960:
+                expected_fps = 14
+        
+        expected = expected_fps * seconds
+        print expected
         min_expected = expected * (1 - error_threshold)
         max_expected = expected * (1 + error_threshold)
         frames = len(timestamps)
