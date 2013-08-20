@@ -176,7 +176,8 @@ class GitBuilder(Task):
                 logger.info("Building %s:%s on %r", self, plat.name, host.hostname)
                 with self.gitrepo(conn, self.get_repo_root(host, conn, plat), logger = logger) as root:
                     last_head_fn = conn.modules.os.path.join(root, ".git", "mighlty-last-head")
-                    head, _ = remote_run(conn, ["git", "rev-parse", "HEAD"], logger = logger).strip()
+                    head, _ = remote_run(conn, ["git", "rev-parse", "HEAD"], logger = logger)
+                    head = head.strip()
                     if not self.force_build:
                         try:
                             with conn.builtin.open(last_head_fn, "r") as f:
@@ -339,8 +340,7 @@ class CrayolaTester(Task):
         "wrapper_task" : REQUIRED, "fw_task" : REQUIRED}
     
     def _run(self):
-        for host, platforms in self.hosts.items():
-            self._run_on_host(host, platforms)
+        parallelize(partial(self._run_on_host, host, platforms) for host, platforms in self.hosts.items())
     
     def _run_on_host(self, host, platforms):
         first_time = True
@@ -492,7 +492,7 @@ def run_and_send_emails(tasks, to_addrs, mail_server = "ex2010",
         dst = os.path.join(log_destination, time.strftime("%Y.%m.%d-%H%M"))
         logger.info("Copying logs to %s", dst)
         shutil.copytree(LOG_DIR, dst)
-        body += u"<div style='font-size:2em;'><a href='file:///%s'>%s</a></div>\n" % (dst.replace("\\", "/"), dst)
+        body += u"<div style='font-size:2em;'>Log dir: <a href='file:///%s'>%s</a></div>\n" % (dst.replace("\\", "/"), dst)
     
     body += u"\n".join(hlh.to_html())
     body += u"\n</body></html>\n"

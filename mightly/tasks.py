@@ -67,17 +67,17 @@ crayola_task = CrayolaTester([wrapper_task, fw_eva_streams],
     wrapper_task = wrapper_task,
     fw_task = fw_eva_streams,
     hosts = {
-        #buildserver : ["win64"],
+        buildserver : ["win64"],
         sdk64 : ["linux64"],
-        #sdk32 : ["linux32"],
-        #softwaremac : ["osx"],
+        sdk32 : ["linux32"],
+        softwaremac : ["osx"],
     }
 )
 
 
 if __name__ == "__main__":
     succ = run_and_send_emails(crayola_task,
-        to_addrs = ["tomerfiliba@gmail.com"],
+        to_addrs = ["tomerfiliba@gmail.com", "eddie.cohen@primesense.com"],
     )
     exit(0 if succ else 1)
 

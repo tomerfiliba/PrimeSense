@@ -26,7 +26,7 @@ class HtmlLogHandler(logging.Handler):
     def to_html(self):
         for level, msg in self._records:
             yield "<pre style='%s; margin: 0;'>%s</pre>" % (";".join(self.STYLES.get(level, ())), 
-                msg.replace("&", "&amp").replace("<", "&lt").replace(">", "&gt"))
+                msg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 def parallelize(iterator):
     logger = logging.getLogger("parallelize")
@@ -74,7 +74,7 @@ class RemoteCommandError(Exception):
         return "\n".join(lines)
 
 def remote_run(conn, args, cwd = None, allow_failure = False, env = None, logger = None):
-    proc = conn.modules.subprocess.Popen(args, cwd = cwd, env = env, 
+    proc = conn.modules.subprocess.Popen(tuple(args), cwd = cwd, env = env, 
         stdin = subprocess.PIPE, stderr = subprocess.PIPE, stdout = subprocess.PIPE)
     if not logger:
         logger = logging.getLogger(conn._config["connid"])
