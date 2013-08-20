@@ -53,7 +53,7 @@ class CrayolaTestBase(object):
     
     def add_log_link(self, name, filepath):
         """
-        Adds a link (URL/file path) to the log
+        Adds a link (URL/file path) to the log. There are collected by Crayola Report
         """
         self.report_error_links.append((name, filepath))
     

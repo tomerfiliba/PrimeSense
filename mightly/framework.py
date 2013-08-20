@@ -5,14 +5,16 @@ import threading
 import logging
 import socket
 import shutil
+from glob import glob
 from functools import partial
 from contextlib import contextmanager
 from mightly.lib import parallelize, remote_run, RemoteCommandError, sendmail, HtmlLogHandler
-from glob import glob
-import sys
 
 
 LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
+shutil.rmtree(LOG_DIR, ignore_errors = True)
+os.mkdir(LOG_DIR)
+
 
 logging.basicConfig(level = logging.INFO, format = "%(asctime)s|%(thread)04d| %(name)-32s| %(message)s",
     datefmt = "%H:%M:%S")
@@ -451,8 +453,12 @@ class CrayolaTester(Task):
                     cwd = "tests", env = env, logger = logger)
             finally:
                 try:
-                    rpyc.classic.download(conn, "tests/nose_report.html", 
-                        os.path.join(LOG_DIR, "nose-%s-%s.html" % (host.hostname, platname)))
+                    logger.info("Copying logs from host")
+                    dstdir = os.path.join(LOG_DIR, "%s-%s" % (host.hostname, platname))
+                    shutil.rmtree(dstdir, ignore_errors = True)
+                    os.mkdir(dstdir)
+                    rpyc.classic.download(conn, "tests/nose_report.html", os.path.join(dstdir, "nose_report.html"))
+                    rpyc.classic.download(conn, "tests/nose-logs", os.path.join(dstdir, "nose-logs"))
                 except (IOError, OSError, ValueError):
                     logger.warn("Failed to download nose_report.html")
 
@@ -460,7 +466,7 @@ class CrayolaTester(Task):
 def run_and_send_emails(tasks, to_addrs, mail_server = "ex2010", from_addr = "NightlyUpdate@primesense.com"):
     if not isinstance(tasks, (tuple, list)):
         tasks = [tasks]
-    logger = logging.getLogger("Mightly")
+    logger = logging.getLogger("Mightly Runner")
     logger.info("===== Started %s =====", time.asctime())
     try:
         for task in tasks:
@@ -475,7 +481,8 @@ def run_and_send_emails(tasks, to_addrs, mail_server = "ex2010", from_addr = "Ni
     body = "\n".join(hlh.to_html())
     sendmail(mail_server, from_addr, to_addrs, "Nightly passed :)" if succ else "Nightly failed :(", 
         body, attachments = glob(LOG_DIR + "/*"))
-    
+    return succ
+
 
 
 

@@ -76,10 +76,10 @@ crayola_task = CrayolaTester([wrapper_task, fw_eva_streams],
 
 
 if __name__ == "__main__":
-    run_and_send_emails(
-        [crayola_task],
-        to_addrs = ["eddie.cohen@primesense.com"],
+    succ = run_and_send_emails(crayola_task,
+        to_addrs = ["tomerfiliba@gmail.com"],
     )
+    exit(0 if succ else 1)
 
 
 

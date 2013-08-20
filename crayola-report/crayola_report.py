@@ -5,10 +5,13 @@ import socket
 import traceback
 import logging
 import threading
+import shutil
 from datetime import datetime
 from nose.plugins import Plugin
 from srcgen.html import HtmlDocument
 from srcgen.js import JS
+from nose.plugins.skip import SkipTest
+from unittest.case import SkipTest as UTSkipTest 
 try:
     import psutil
 except ImportError:
@@ -106,8 +109,8 @@ class Suite(object):
                             for name, url in test._html_errlink:
                                 with doc.li():
                                     doc.span("Link to %s: " % (name,))
-                                    url2 = url if "://" in url else "file:///%s" % (url.replace("\\", "/"),)
-                                    doc.a(url, href = url2)
+                                    #url2 = url if "://" in url else "file:///%s" % (url.replace("\\", "/"),)
+                                    doc.a(url, href = url.replace("\\", "/"))
         else:
             name = (test.shortDescription() or str(test)).split(".")
             doc.strong(name[-1], class_ = "test_name")
@@ -144,6 +147,7 @@ class RecordCollectingHandler(logging.Handler):
 
 class HtmlReportPlugin(Plugin):
     name = 'crayola-report'
+    score = 30000
     
     def options(self, parser, env=os.environ):
         Plugin.options(self, parser, env)
@@ -161,6 +165,10 @@ class HtmlReportPlugin(Plugin):
         self.curr_suite = None
         self.suites = []
         self.start_time = datetime.now()
+        self.num_skips = 0
+        self.report_log_dir = os.path.join(os.path.dirname(os.path.abspath(self.report_path)), "nose-logs")
+        shutil.rmtree(self.report_log_dir, ignore_errors = True)
+        os.mkdir(self.report_log_dir)
 
     def startTest(self, test):
         self.curr_suite.add_test(test)
@@ -178,26 +186,40 @@ class HtmlReportPlugin(Plugin):
     def afterTest(self, test):
         self.records.clear()
     
+    def copy_logs(self, paths):
+        outputs = []
+        for name, path in paths:
+            shutil.copy(path, self.report_log_dir)
+            outputs.append((name, "nose-logs/%s" % (os.path.basename(path),)))
+        return outputs
+    
     def addSuccess(self, test):
         try:
             test._html_errlink = getattr(test.test.inst, "report_error_links", ())
         except AttributeError:
             test._html_errlink = ()
+        test._html_errlink = self.copy_logs(test._html_errlink)
         self.curr_suite.set_result(test, "ok", self.records.records)
+    
     def addError(self, test, err):
         try:
             test._html_errlink = getattr(test.test.inst, "report_error_links", ())
         except AttributeError:
             test._html_errlink = ()
-        self.curr_suite.set_result(test, "error", "".join(traceback.format_exception(*err)))
+        test._html_errlink = self.copy_logs(test._html_errlink)
+        if issubclass(err[0], (SkipTest, UTSkipTest)):
+            self.num_skips += 1
+            self.curr_suite.set_result(test, "skip", self.records.records)
+        else:
+            self.curr_suite.set_result(test, "error", "".join(traceback.format_exception(*err)))
+    
     def addFailure(self, test, err):
         try:
             test._html_errlink = getattr(test.test.inst, "report_error_links", ())
         except AttributeError:
             test._html_errlink = ()
+        test._html_errlink = self.copy_logs(test._html_errlink)
         self.curr_suite.set_result(test, "fail", "".join(traceback.format_exception(*err)))
-    def addSkip(self, test):
-        self.curr_suite.set_result(test, "skip", self.records.records)
 
     def finalize(self, result):
         doc = HtmlDocument()
@@ -207,15 +229,16 @@ class HtmlReportPlugin(Plugin):
         css = doc.head_css()
         with css("body"):
             css["font-family"] = "arial"
-            img = (
-                "iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAGFBMVEX29vb19fXw8PDy8vL09PTz"
-                "8/Pv7+/x8fGKuegbAAAAyUlEQVR42pXRQQ7CMBRDwST9pfe/MahEmgURbt7WmpVb6+vG0dd9REnn"
-                "66xRy/qXiCgmEIIJhGACIZhACCYQgvlDCDFIEAwSBIMEwSBBMEgQDBIEgwTBIEEwCJEMQiSDENFM"
-                "QmQzCZEbNyGemd6KeGZ6u4hnXe2qbdLHFjhf1XqNLXHev4wdMd9nspiEiWISJgqECQJhgkCYIBAm"
-                "CIQJAmGCQJggECYJhAkCEUMEwhCBMEQgDJEIQ2RSg0iEIRJhiB/S+rrjqvXQ3paIJUgPBXxiAAAA"
-                "AElFTkSuQmCC"
-            )
-            css["background"] = 'fixed url(data:image/png;base64,%s)' % (img,)
+            #img = (
+            #    "iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAGFBMVEX29vb19fXw8PDy8vL09PTz"
+            #    "8/Pv7+/x8fGKuegbAAAAyUlEQVR42pXRQQ7CMBRDwST9pfe/MahEmgURbt7WmpVb6+vG0dd9REnn"
+            #    "66xRy/qXiCgmEIIJhGACIZhACCYQgvlDCDFIEAwSBIMEwSBBMEgQDBIEgwTBIEEwCJEMQiSDENFM"
+            #    "QmQzCZEbNyGemd6KeGZ6u4hnXe2qbdLHFjhf1XqNLXHev4wdMd9nspiEiWISJgqECQJhgkCYIBAm"
+            #    "CIQJAmGCQJggECYJhAkCEUMEwhCBMEQgDJEIQ2RSg0iEIRJhiB/S+rrjqvXQ3paIJUgPBXxiAAAA"
+            #    "AElFTkSuQmCC"
+            #)
+            #css["background"] = 'fixed url(data:image/png;base64,%s)' % (img,)
+            css["background-color"] = "#f1f1f1";
         
         with css("*:focus"):
             css["outline"] = "none"
@@ -263,7 +286,7 @@ class HtmlReportPlugin(Plugin):
             with css("tr.error"):
                 css["background-color"] = "rgb(236, 141, 141);"
             with css("tr.skip"):
-                css["background-color"] = "#dd1122"
+                css["background-color"] = "#C9BB87"
             
             with css("table.log_records"):
                 css["font-family"] = "monospace"
@@ -305,7 +328,7 @@ class HtmlReportPlugin(Plugin):
                 with css(".ok"):
                     css["background-color"] = "rgb(139, 248, 66)"
                 with css(".skip"):
-                    css["background-color"] = "#dd1122"
+                    css["background-color"] = "#C9BB87"
                 with css(".fail"):
                     css["background-color"] = "rgb(236, 175, 141)"
                 with css(".error"):
@@ -346,10 +369,13 @@ class HtmlReportPlugin(Plugin):
                                         doc.strong("Tests: ")
                                         doc.text(result.testsRun)
                                     with doc.td():
-                                        doc.strong(" Failures: ")
+                                        doc.strong("Skips: ")
+                                        doc.text(self.num_skips)
+                                    with doc.td():
+                                        doc.strong("Failures: ")
                                         doc.text(len(result.failures))
                                     with doc.td():
-                                        doc.strong(" Errors: ")
+                                        doc.strong("Errors: ")
                                         doc.text(len(result.errors))
                                 
                             with doc.td():

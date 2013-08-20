@@ -5,6 +5,7 @@ import subprocess
 from MimeWriter import MimeWriter
 from smtplib import SMTP
 from cStringIO import StringIO
+import os
 
 
 class HtmlLogHandler(logging.Handler):
@@ -23,9 +24,11 @@ class HtmlLogHandler(logging.Handler):
         msg = self.format(record)
         self._records.append((record.levelname, msg))
     def to_html(self):
+        yield "<html><head><title>Nightly Report</title></head><body>"
         for level, msg in self._records:
-            yield "<div style='%s;'><pre>%s</pre></div>" % (";".join(self.STYLES.get(level, ())), 
+            yield "<pre style='%s; margin: 0;'>%s</pre>" % (";".join(self.STYLES.get(level, ())), 
                 msg.replace("&", "&amp").replace("<", "&lt").replace(">", "&gt"))
+        yield "</body></html>"
 
 def parallelize(iterator):
     logger = logging.getLogger("parallelize")
@@ -105,10 +108,10 @@ def sendmail(mailserver, from_addr, to_addrs, subject, text, attachments = ()):
     for fn in attachments:
         part = writer.nextpart()
         part.addheader('Content-Transfer-Encoding', 'base64')
-        if fn.endswith(".htm") or fn.endswith(".html"):
-            body = part.startbody('text/html; name=%s' % (fn,))
-        else:
-            body = part.startbody('text/plain; name=%s' % (fn,))
+        #if fn.endswith(".htm") or fn.endswith(".html"):
+        #    body = part.startbody('text/html; name=%s' % (fn,))
+        #else:
+        body = part.startbody('text/plain; name=%s' % (os.path.basename(fn),))
         with open(fn, 'rb') as f:
             body.write(f.read().encode("base64"))
 
