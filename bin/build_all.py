@@ -47,6 +47,7 @@ class BuildPackage(cli.Application):
             if self.upload:
                 # copy pypirc to ~
                 orig = local.path("~/.pypirc")
+                restore = False
                 if orig.exists():
                     copy(orig, "~/.pypirc-openni-wrapper")
                     restore = True
