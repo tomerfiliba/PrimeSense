@@ -6,7 +6,6 @@ import logging
 import socket
 import shutil
 import sys
-from glob import glob
 from functools import partial
 from contextlib import contextmanager
 from mightly.lib import parallelize, remote_run, RemoteCommandError, sendmail, HtmlLogHandler
@@ -177,7 +176,7 @@ class GitBuilder(Task):
                 logger.info("Building %s:%s on %r", self, plat.name, host.hostname)
                 with self.gitrepo(conn, self.get_repo_root(host, conn, plat), logger = logger) as root:
                     last_head_fn = conn.modules.os.path.join(root, ".git", "mighlty-last-head")
-                    head = remote_run(conn, ["git", "rev-parse", "HEAD"], logger = logger).strip()
+                    head, _ = remote_run(conn, ["git", "rev-parse", "HEAD"], logger = logger).strip()
                     if not self.force_build:
                         try:
                             with conn.builtin.open(last_head_fn, "r") as f:
@@ -432,8 +431,12 @@ class CrayolaTester(Task):
             
             logger.info("Running tests")
             try:
-                remote_run(conn, ["nosetests", "-vv", "-d", "--with-crayola-report"],
+                out, err = remote_run(conn, ["nosetests", "-vv", "-d", "--with-crayola-report"],
                     cwd = "tests", env = env, logger = logger)
+                if out.strip():
+                    logger.info(out)
+                if err.strip():
+                    logger.info(err)
             finally:
                 try:
                     logger.info("Copying logs from host")
@@ -447,7 +450,8 @@ class CrayolaTester(Task):
 
 LOG_DIR = None
 
-def run_and_send_emails(tasks, to_addrs, mail_server = "ex2010", from_addr = "NightlyUpdate@primesense.com"):
+def run_and_send_emails(tasks, to_addrs, mail_server = "ex2010", 
+        from_addr = "NightlyUpdate@primesense.com", log_destination = r"G:\RnD\Software\Nightly_Builds"):
     global LOG_DIR
     LOG_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "logs"))
     shutil.rmtree(LOG_DIR, ignore_errors = True)
@@ -482,9 +486,20 @@ def run_and_send_emails(tasks, to_addrs, mail_server = "ex2010", from_addr = "Ni
         succ = True
         logger.info("SUCCESS!")
     fh.flush()
-    body = "\n".join(hlh.to_html())
-    #sendmail(mail_server, from_addr, to_addrs, "Nightly passed :)" if succ else "Nightly failed :(", 
-    #    body, attachments = glob(LOG_DIR + "/*"))
+    body = u"<html><head><title>Nightly Report</title></head><body>\n"
+    
+    if os.path.exists(log_destination):
+        dst = os.path.join(log_destination, time.strftime("%Y.%m.%d-%H%M"))
+        logger.info("Copying logs to %s", dst)
+        shutil.copytree(LOG_DIR, dst)
+        body += u"<div style='font-size:2em;'><a href='file:///%s'>%s</a></div>\n" % (dst.replace("\\", "/"), dst)
+    
+    body += u"\n".join(hlh.to_html())
+    body += u"\n</body></html>\n"
+    
+    sendmail(mail_server, from_addr, to_addrs, "Nightly passed :-)" if succ else "Nightly failed :-(", 
+        body)
+    
     return succ
 
 

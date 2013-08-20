@@ -24,11 +24,9 @@ class HtmlLogHandler(logging.Handler):
         msg = self.format(record)
         self._records.append((record.levelname, msg))
     def to_html(self):
-        yield "<html><head><title>Nightly Report</title></head><body>"
         for level, msg in self._records:
             yield "<pre style='%s; margin: 0;'>%s</pre>" % (";".join(self.STYLES.get(level, ())), 
                 msg.replace("&", "&amp").replace("<", "&lt").replace(">", "&gt"))
-        yield "</body></html>"
 
 def parallelize(iterator):
     logger = logging.getLogger("parallelize")
@@ -38,7 +36,7 @@ def parallelize(iterator):
             res = func()
         except Exception:
             results[i] = (False, sys.exc_info())
-            logger.error("Parallel task failed", exc_info = obj)
+            logger.error("Parallel task failed", exc_info = True)
         else:
             results[i] = (True, res)
     threads = []
@@ -49,13 +47,12 @@ def parallelize(iterator):
     for thd in threads:
         thd.join()
     output = [None] * len(threads)
-    first_error = None
     for i in range(len(threads)):
         succ, obj = results[i]
         if succ:
             output[i] = obj
         else:
-            t, v, tb = first_error
+            t, v, tb = obj
             raise t, v, tb
     return output
 
@@ -91,7 +88,7 @@ def remote_run(conn, args, cwd = None, allow_failure = False, env = None, logger
         else:
             cwd = conn.modules.os.path.abspath(cwd)
         raise RemoteCommandError(conn._config["connid"], args, cwd, rc, out, err)
-    return out
+    return out, err
 
 
 def sendmail(mailserver, from_addr, to_addrs, subject, text, attachments = ()):
