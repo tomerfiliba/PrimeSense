@@ -7,6 +7,26 @@ from smtplib import SMTP
 from cStringIO import StringIO
 
 
+class HtmlLogHandler(logging.Handler):
+    STYLES = {
+        "DEBUG" : ["background-color: white"],
+        "INFO" : ["background-color: rgba(0, 255, 0, 0.1)"],
+        "WARNING" : ["background-color: rgba(255, 255, 0, 0.1)"],
+        "ERROR" : ["background-color: rgba(255, 0, 0, 0.1)"],
+        "CRITICAL" : ["background-color: rgba(255, 0, 0, 0.4)"],
+    }
+    
+    def __init__(self):
+        logging.Handler.__init__(self)
+        self._records = []
+    def emit(self, record):
+        msg = self.format(record)
+        self._records.append((record.levelname, msg))
+    def to_html(self):
+        for level, msg in self._records:
+            yield "<div style='%s;'><pre>%s</pre></div>" % (";".join(self.STYLES.get(level, ())), 
+                msg.replace("&", "&amp").replace("<", "&lt").replace(">", "&gt"))
+
 def parallelize(iterator):
     logger = logging.getLogger("parallelize")
     results = {}
@@ -15,6 +35,7 @@ def parallelize(iterator):
             res = func()
         except Exception:
             results[i] = (False, sys.exc_info())
+            logger.error("Parallel task failed", exc_info = obj)
         else:
             results[i] = (True, res)
     threads = []
@@ -31,12 +52,8 @@ def parallelize(iterator):
         if succ:
             output[i] = obj
         else:
-            logger.error("Parallel task failed", exc_info = obj)
-            if first_error is None:
-                first_error = obj
-    if first_error:
-        t, v, tb = first_error
-        raise t, v, tb
+            t, v, tb = first_error
+            raise t, v, tb
     return output
 
 class RemoteCommandError(Exception):
@@ -72,6 +89,7 @@ def remote_run(conn, args, cwd = None, allow_failure = False, env = None, logger
             cwd = conn.modules.os.path.abspath(cwd)
         raise RemoteCommandError(conn._config["connid"], args, cwd, rc, out, err)
     return out
+
 
 def sendmail(mailserver, from_addr, to_addrs, subject, text, attachments = ()):
     message = StringIO()

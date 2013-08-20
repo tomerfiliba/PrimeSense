@@ -1,5 +1,5 @@
 from mightly.framework import (OpenNIBuilder, Host, BuildPlatform, NiteBuilder, CrayolaTester, 
-    WrapperBuilder, FirmwareBuilder)
+    WrapperBuilder, FirmwareBuilder, run_and_send_emails)
 
 
 buildserver = Host("buildserver", outputs = r"C:\Users\tool.lab\outputs", installs = r"C:\Users\tool.lab\installs")
@@ -66,10 +66,9 @@ crayola_task = CrayolaTester([wrapper_task, fw_eva_streams],
     nite_task = nite_task,
     wrapper_task = wrapper_task,
     fw_task = fw_eva_streams,
-    to_addrs = ["tomerfiliba@gmail.com"],
     hosts = {
-        #buildserver : ["win64"],
-        sdk64 : ["linux64"],
+        buildserver : ["win64"],
+        #sdk64 : ["linux64"],
         #sdk32 : ["linux32"],
         #softwaremac : ["osx"],
     }
@@ -77,12 +76,10 @@ crayola_task = CrayolaTester([wrapper_task, fw_eva_streams],
 
 
 if __name__ == "__main__":
-    goals = [
-        crayola_task,
-    ]
-
-    for goal in goals:
-        goal.run()
+    run_and_send_emails(
+        [crayola_task],
+        to_addrs = ["eddie.cohen@primesense.com"],
+    )
 
 
 

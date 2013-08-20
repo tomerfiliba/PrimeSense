@@ -1,21 +1,34 @@
+import os
+import time
 import rpyc
 import threading
 import logging
+import socket
+import shutil
 from functools import partial
 from contextlib import contextmanager
-from mightly.lib import parallelize, remote_run, RemoteCommandError, sendmail
-import shutil
+from mightly.lib import parallelize, remote_run, RemoteCommandError, sendmail, HtmlLogHandler
 from glob import glob
+import sys
 
+
+LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "logs")
 
 logging.basicConfig(level = logging.INFO, format = "%(asctime)s|%(thread)04d| %(name)-32s| %(message)s",
     datefmt = "%H:%M:%S")
-fh = logging.FileHandler("mightly.log")
+fh = logging.FileHandler(os.path.join(LOG_DIR, "mightly.log"), "w")
 fmt = logging.Formatter("%(asctime)s|%(thread)04d| %(name)-32s| %(message)s", datefmt = "%H:%M:%S")
 fh.setFormatter(fmt)
 fh.setLevel(logging.DEBUG)
+hlh = HtmlLogHandler()
+hlh.setFormatter(fmt)
+hlh.setLevel(logging.INFO)
 logging.root.addHandler(fh)
+logging.root.addHandler(hlh)
 
+
+class HostConnectError(Exception):
+    pass
 
 class Host(object):
     def __init__(self, hostname, outputs, installs, rpyc_port = 18861):
@@ -26,7 +39,10 @@ class Host(object):
     def __repr__(self):
         return "<Host %r>" % (self.hostname,)
     def connect(self):
-        return rpyc.classic.connect(self.hostname, self.rpyc_port)
+        try:
+            return rpyc.classic.connect(self.hostname, self.rpyc_port)
+        except (socket.error, socket.timeout) as ex:
+            raise HostConnectError("Could not connect to %r: %s" % (self.hostname, ex))
 
 class REQUIRED(object):
     pass
@@ -174,7 +190,6 @@ class GitBuilder(Task):
             with host.connect() as conn:
                 conn._config["connid"] = host.hostname
                 logger.info("Building %s:%s on %r", self, plat.name, host.hostname)
-
                 with self.gitrepo(conn, self.get_repo_root(host, conn, plat), logger = logger) as root:
                     last_head_fn = conn.modules.os.path.join(root, ".git", "mighlty-last-head")
                     head = remote_run(conn, ["git", "rev-parse", "HEAD"], logger = logger).strip()
@@ -185,7 +200,9 @@ class GitBuilder(Task):
                         except IOError:
                             last_head = None
                         logger.debug("HEAD is %s, last built HEAD is %s", head, last_head)
-                        need_build = head != last_head
+                        output = [conn.modules.os.path.abspath(f)
+                            for f in conn.modules.glob.glob(conn.modules.os.path.join(root, plat.output_pattern))]
+                        need_build = not output or head != last_head
                     else:
                         need_build = True
                     
@@ -335,13 +352,11 @@ class CrayolaTester(Task):
     GIT_REPO = "ssh://git/localhome/GIT/Software/Nightly.git"
     GIT_BRANCH = "crayola"
     ATTRS = {"hosts" : REQUIRED, "openni_task" : REQUIRED, "nite_task" : REQUIRED, 
-        "wrapper_task" : REQUIRED, "fw_task" : REQUIRED, "mail_server" : "ex2010",
-        "from_addr" : "NightlyUpdate@primesense.com", "to_addrs" : REQUIRED}
+        "wrapper_task" : REQUIRED, "fw_task" : REQUIRED}
     
     def _run(self):
         for host, platforms in self.hosts.items():
             self._run_on_host(host, platforms)
-        self.email_report()
     
     def _run_on_host(self, host, platforms):
         first_time = True
@@ -434,19 +449,33 @@ class CrayolaTester(Task):
             try:
                 remote_run(conn, ["nosetests", "-vv", "-d", "--with-crayola-report"],
                     cwd = "tests", env = env, logger = logger)
-            except RemoteCommandError:
-                logger.error("nosetests failed", exc_info = True)
-            try:
-                rpyc.classic.download(conn, "tests/nose_report.html", 
-                    "nose-report-%s-%s.html" % (host.hostname, platname))
-            except (IOError, OSError, ValueError):
-                pass
-
-    def email_report(self):
-        sendmail(self.mail_server, self.from_addr, self.to_addrs, "Nighly report", "Everything is on fire",
-            attachments = glob("nose-report-*.html"))
+            finally:
+                try:
+                    rpyc.classic.download(conn, "tests/nose_report.html", 
+                        os.path.join(LOG_DIR, "nose-%s-%s.html" % (host.hostname, platname)))
+                except (IOError, OSError, ValueError):
+                    logger.warn("Failed to download nose_report.html")
 
 
+def run_and_send_emails(tasks, to_addrs, mail_server = "ex2010", from_addr = "NightlyUpdate@primesense.com"):
+    if not isinstance(tasks, (tuple, list)):
+        tasks = [tasks]
+    logger = logging.getLogger("Mightly")
+    logger.info("===== Started %s =====", time.asctime())
+    try:
+        for task in tasks:
+            task.run()
+    except Exception:
+        succ = False
+        logger.error("FAILED!", exc_info = True)
+    else:
+        succ = True
+        logger.info("SUCCESS!")
+    fh.flush()
+    body = "\n".join(hlh.to_html())
+    sendmail(mail_server, from_addr, to_addrs, "Nightly passed :)" if succ else "Nightly failed :(", 
+        body, attachments = glob(LOG_DIR + "/*"))
+    
 
 
 

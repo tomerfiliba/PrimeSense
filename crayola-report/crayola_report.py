@@ -20,7 +20,7 @@ class Suite(object):
         self.name = name
         self.filename = filename
         self.tests = []
-        self.all_ok = True
+        self.status = "ok"
 
     def add_test(self, test):
         test._html_start_time = time.time()
@@ -47,8 +47,14 @@ class Suite(object):
         if psutil:
             proc = psutil.Process(os.getpid())
             test._html_cpumem = (proc.get_cpu_percent(), proc.get_memory_percent())
+        
+        if self.status == "ok":
+            if status == "skip":
+                self.status = "skip"
+            if status == "error":
+                self.status = "error"
             
-        if status not in ("ok", "skip"):
+        if status == "error":
             self.all_ok = False
     
     def to_html(self, doc):
