@@ -451,7 +451,8 @@ class CrayolaTester(Task):
 LOG_DIR = None
 
 def run_and_send_emails(tasks, to_addrs, mail_server = "ex2010", 
-        from_addr = "NightlyUpdate@primesense.com", log_destination = r"G:\RnD\Software\Nightly_Builds"):
+        from_addr = "NightlyUpdate@primesense.com", log_destination = r"G:\RnD\Software\Nightly_Builds", 
+        exit = True):
     global LOG_DIR
     LOG_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "logs"))
     shutil.rmtree(LOG_DIR, ignore_errors = True)
@@ -500,7 +501,10 @@ def run_and_send_emails(tasks, to_addrs, mail_server = "ex2010",
     sendmail(mail_server, from_addr, to_addrs, "Nightly passed :-)" if succ else "Nightly failed :-(", 
         body)
     
-    return succ
+    if exit:
+        sys.exit(0 if succ else 1)
+    else:
+        return succ
 
 
 
