@@ -7,6 +7,7 @@ from smtplib import SMTP
 from cStringIO import StringIO
 import os
 from contextlib import contextmanager
+from collections import OrderedDict
 
 
 class HtmlLogHandler(logging.Handler):
@@ -20,17 +21,27 @@ class HtmlLogHandler(logging.Handler):
     
     def __init__(self):
         logging.Handler.__init__(self)
-        self._records = []
+        self._records_by_logger = OrderedDict()
     def emit(self, record):
+        if record.name not in self._records_by_logger:
+            self._records_by_logger[record.name] = []
+        
         msg = self.format(record)
-        self._records.append((record.levelname, msg))
+        self._records_by_logger[record.name].append((record.levelname, msg))
     def to_html(self):
-        for level, msg in self._records:
-            yield "<pre style='%s; margin: 0;'>%s</pre>" % (";".join(self.STYLES.get(level, ())), 
-                msg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+        for logger, records in self._records_by_logger.items():
+            succ = all(level in ("INFO", "DEBUG", "WARNING") for level, _ in records)
+            yield "<details style='display:block; background-color: rgba(255,100,100,0.1); margin-bottom: 20px;'>"
+            bgcolor = "rgba(0,255,0,0.3)" if succ else "rgba(255,0,0,0.3)"
+            yield "<summary style='display:block; padding: 10px; cursor:pointer; background-color:%s;'>%s</summary>" % (bgcolor, logger)
+            for level, msg in records:
+                yield "<pre style='%s; margin: 0;'>%s</pre>" % (";".join(self.STYLES.get(level, ())), 
+                    msg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+            yield "</details>"
 
-def parallelize(iterator):
-    logger = logging.getLogger("parallelize")
+def parallelize(iterator, logger = None):
+    if logger is None:
+        logger = logging.getLogger("parallelize")
     results = {}
     def run(i, func):
         try:
@@ -74,11 +85,11 @@ class RemoteCommandError(Exception):
             lines.append("stderr:\n    | " + "\n    | ".join(self.err.splitlines()))
         return "\n".join(lines)
 
-def remote_run(conn, args, cwd = None, allow_failure = False, env = None, logger = None):
+def remote_run(conn, logger, args, cwd = None, allow_failure = False, env = None, sudo = False):
+    if sudo and conn.modules.sys.platform != "win32":
+        args.insert(0, "sudo")
     proc = conn.modules.subprocess.Popen(tuple(args), cwd = cwd, env = env, 
         stdin = subprocess.PIPE, stderr = subprocess.PIPE, stdout = subprocess.PIPE)
-    if not logger:
-        logger = logging.getLogger(conn._config["connid"])
     logger.debug("Running %r (pid %d)", " ".join(args), proc.pid)
     out, err = proc.communicate()
     rc = proc.wait()
@@ -108,19 +119,19 @@ def gitrepo(conn, path, repo, branch, logger):
     conn.modules.os.chdir(path)
     if not conn.modules.os.path.isdir(".git"):
         if is_hash:
-            remote_run(conn, ["git", "clone", repo, "."], logger = logger)
+            remote_run(conn, logger, ["git", "clone", repo, "."])
         else:
-            remote_run(conn, ["git", "clone", repo, ".", "-b", branch], logger = logger)
+            remote_run(conn, logger, ["git", "clone", repo, ".", "-b", branch])
 
-    remote_run(conn, ["git", "fetch", "origin"], logger = logger)
-    remote_run(conn, ["git", "reset", "--hard"], allow_failure = True, logger = logger)
-    remote_run(conn, ["git", "branch", "build_branch"], allow_failure = True, logger = logger)
-    remote_run(conn, ["git", "checkout", "build_branch"], logger = logger)
+    remote_run(conn, logger, ["git", "fetch", "origin"])
+    remote_run(conn, logger, ["git", "reset", "--hard"], allow_failure = True)
+    remote_run(conn, logger, ["git", "branch", "build_branch"], allow_failure = True)
+    remote_run(conn, logger, ["git", "checkout", "build_branch"])
     
     if is_hash:
-        remote_run(conn, ["git", "reset", "--hard", branch], logger = logger)
+        remote_run(conn, logger, ["git", "reset", "--hard", branch])
     else:
-        remote_run(conn, ["git", "reset", "--hard", "origin/%s" % (branch,)], logger = logger)
+        remote_run(conn, logger, ["git", "reset", "--hard", "origin/%s" % (branch,)])
 
     try:
         yield conn.modules.os.getcwd()

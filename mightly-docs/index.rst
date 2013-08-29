@@ -70,7 +70,7 @@ might require all sorts of environment variables that must be set externally.
 
 A simple builder might be configured like the following::
 
-	nite_task = NiteBuilder([openni_task], hosts = {
+	nite_task = NiteBuilder(Deps(openni_task = openni_task), hosts = {
 	    sdk32 : [
 	        BuildPlatform("linux32", ["python", "ReleaseVersion.py", "x86"], 
 	        	output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
@@ -89,8 +89,11 @@ which specify the name of the platform, the command to run (and its parameters) 
 to collect the outputs.
 
 .. note:: 
-   When a builder is run, it executes in parallel on all hosts. Within each hosts, ``BuildPlatforms`` are
-   executed serially.
+   * When a builder is run, it executes in parallel on all hosts. Within each hosts, ``BuildPlatforms`` are
+     executed serially.
+   * Builders remember the last git hash they've built and will skip building if the hash is the same and the 
+     outputs exist (unless ``force_build = True``)
+
 
 CrayolaTester
 ^^^^^^^^^^^^^
