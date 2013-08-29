@@ -2,10 +2,10 @@ from mightly.framework import (OpenNIBuilder, Host, BuildPlatform, NiteBuilder, 
     WrapperBuilder, FirmwareBuilder, run_and_send_emails)
 
 
-buildserver = Host("buildserver", outputs = r"C:\Users\tool.lab\outputs", installs = r"C:\Users\tool.lab\installs")
-sdk32 = Host("sdk32", outputs = "/home/buildserver/outputs", installs = "/home/buildserver/installs")
-sdk64 = Host("sdk64", outputs = "/home/buildserver/outputs", installs = "/home/buildserver/installs")
-softwaremac = Host("softwaremac", outputs = "/Users/buildserver/outputs", installs = "/Users/buildserver/installs")
+buildserver = Host("buildserver", clones = r"C:\Users\tool.lab\outputs", installbase = r"C:\Users\tool.lab\installs")
+sdk32 = Host("sdk32", clones = "/home/buildserver/outputs", installbase = "/home/buildserver/installs")
+sdk64 = Host("sdk64", clones = "/home/buildserver/outputs", installbase = "/home/buildserver/installs")
+softwaremac = Host("softwaremac", clones = "/Users/buildserver/outputs", installbase = "/Users/buildserver/installs")
 
 openni_task = OpenNIBuilder([], hosts = {
     buildserver : [

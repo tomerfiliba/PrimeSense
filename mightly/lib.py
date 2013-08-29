@@ -6,6 +6,7 @@ from MimeWriter import MimeWriter
 from smtplib import SMTP
 from cStringIO import StringIO
 import os
+from contextlib import contextmanager
 
 
 class HtmlLogHandler(logging.Handler):
@@ -89,6 +90,42 @@ def remote_run(conn, args, cwd = None, allow_failure = False, env = None, logger
             cwd = conn.modules.os.path.abspath(cwd)
         raise RemoteCommandError(conn._config["connid"], args, cwd, rc, out, err)
     return out, err
+
+@contextmanager
+def gitrepo(conn, path, repo, branch, logger):
+    logger.info("Fetching git repo %s on %s", path, conn._config["connid"])
+    try:
+        # this might fail if the directory the server was chdir'ed into was deleted
+        prevcwd = conn.modules.os.getcwd()
+    except OSError:
+        conn.modules.os.chdir(conn.modules.os.path.expanduser("~"))
+        prevcwd = conn.modules.os.getcwd()
+    
+    is_hash = (len(branch) >= 7 and all(ch in "0123456789abcdefABCDEF" for ch in branch))
+    
+    if not conn.modules.os.path.exists(path):
+        conn.modules.os.makedirs(path)
+    conn.modules.os.chdir(path)
+    if not conn.modules.os.path.isdir(".git"):
+        if is_hash:
+            remote_run(conn, ["git", "clone", repo, "."], logger = logger)
+        else:
+            remote_run(conn, ["git", "clone", repo, ".", "-b", branch], logger = logger)
+
+    remote_run(conn, ["git", "fetch", "origin"], logger = logger)
+    remote_run(conn, ["git", "reset", "--hard"], allow_failure = True, logger = logger)
+    remote_run(conn, ["git", "branch", "build_branch"], allow_failure = True, logger = logger)
+    remote_run(conn, ["git", "checkout", "build_branch"], logger = logger)
+    
+    if is_hash:
+        remote_run(conn, ["git", "reset", "--hard", branch], logger = logger)
+    else:
+        remote_run(conn, ["git", "reset", "--hard", "origin/%s" % (branch,)], logger = logger)
+
+    try:
+        yield conn.modules.os.getcwd()
+    finally:
+        conn.modules.os.chdir(prevcwd)
 
 
 def sendmail(mailserver, from_addr, to_addrs, subject, text, attachments = ()):

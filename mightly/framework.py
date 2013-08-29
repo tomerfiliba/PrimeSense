@@ -7,18 +7,18 @@ import socket
 import shutil
 import sys
 from functools import partial
-from contextlib import contextmanager
-from mightly.lib import parallelize, remote_run, RemoteCommandError, sendmail, HtmlLogHandler
+from mightly.lib import (parallelize, remote_run, RemoteCommandError, 
+    sendmail, HtmlLogHandler, gitrepo)
 
 
 class HostConnectError(Exception):
     pass
 
 class Host(object):
-    def __init__(self, hostname, outputs, installs, rpyc_port = 18861):
+    def __init__(self, hostname, gitbase, installbase, rpyc_port = 18861):
         self.hostname = hostname
-        self.outputs = outputs
-        self.installs = installs
+        self.gitbase = gitbase
+        self.installbase = installbase
         self.rpyc_port = rpyc_port
     def __repr__(self):
         return "<Host %r>" % (self.hostname,)
@@ -100,42 +100,6 @@ class BuildPlatform(object):
         self.output_pattern = output_pattern
     def __repr__(self):
         return "<BuildPlatform %r>" % (self.name,)
-
-@contextmanager
-def gitrepo(conn, path, repo, branch, logger):
-    logger.info("Fetching git repo %s on %s", path, conn._config["connid"])
-    try:
-        # this might fail if the directory the server was chdir'ed into was deleted
-        prevcwd = conn.modules.os.getcwd()
-    except OSError:
-        conn.modules.os.chdir(conn.modules.os.path.expanduser("~"))
-        prevcwd = conn.modules.os.getcwd()
-    
-    is_hash = (len(branch) >= 7 and all(ch in "0123456789abcdefABCDEF" for ch in branch))
-    
-    if not conn.modules.os.path.exists(path):
-        conn.modules.os.makedirs(path)
-    conn.modules.os.chdir(path)
-    if not conn.modules.os.path.isdir(".git"):
-        if is_hash:
-            remote_run(conn, ["git", "clone", repo, "."], logger = logger)
-        else:
-            remote_run(conn, ["git", "clone", repo, ".", "-b", branch], logger = logger)
-
-    remote_run(conn, ["git", "fetch", "origin"], logger = logger)
-    remote_run(conn, ["git", "reset", "--hard"], allow_failure = True, logger = logger)
-    remote_run(conn, ["git", "branch", "build_branch"], allow_failure = True, logger = logger)
-    remote_run(conn, ["git", "checkout", "build_branch"], logger = logger)
-    
-    if is_hash:
-        remote_run(conn, ["git", "reset", "--hard", branch], logger = logger)
-    else:
-        remote_run(conn, ["git", "reset", "--hard", "origin/%s" % (branch,)], logger = logger)
-
-    try:
-        yield conn.modules.os.getcwd()
-    finally:
-        conn.modules.os.chdir(prevcwd)
 
 
 class GitBuilder(Task):
@@ -226,7 +190,7 @@ class OpenNIBuilder(GitBuilder):
     
     @classmethod
     def get_repo_root(cls, host, conn, platform):
-        return conn.modules.os.path.join(host.outputs, "OpenNI2", getattr(platform, "name", platform))
+        return conn.modules.os.path.join(host.gitbase, "OpenNI2", getattr(platform, "name", platform))
     
     def _build(self, host, conn, platform, logger):
         conn.modules.os.chdir("Packaging")
@@ -238,7 +202,7 @@ class NiteBuilder(GitBuilder):
 
     @classmethod
     def get_repo_root(cls, host, conn, platform):
-        return conn.modules.os.path.join(host.outputs, "NiTE2", getattr(platform, "name", platform))
+        return conn.modules.os.path.join(host.gitbase, "NiTE2", getattr(platform, "name", platform))
 
     def _build(self, host, conn, platform, logger):
         conn.modules.os.chdir("SDK/Packaging")
@@ -296,7 +260,7 @@ class WrapperBuilder(GitBuilder):
 
             openni_include = path_join(oni_outputs_path, "Include")
             nite_include = path_join(nite_outputs_path, "Include")
-            path = conn.modules.os.path.join(self.host.outputs, "PythonWrapper")
+            path = conn.modules.os.path.join(self.host.outputs.gitbase, "PythonWrapper")
             logger.info("openni_include_dir = %s", openni_include)
             logger.info("nite_include_dir = %s", nite_include)
 
@@ -367,7 +331,7 @@ class CrayolaTester(Task):
             logger.debug("Installing %s", artifact)
             remote_run(conn, ["msiexec", "/i", artifact, "/quiet"], logger = logger)
         else:
-            destdir = path_join(host.installs, platname, target)
+            destdir = path_join(host.installbase, platname, target)
             conn.modules.shutil.rmtree(destdir, ignore_errors = True)
             if not conn.modules.os.path.exists(destdir):
                 conn.modules.os.makedirs(destdir)
@@ -407,7 +371,7 @@ class CrayolaTester(Task):
 
     def _run_crayola(self, host, conn, platname, logger):
         logger.info("Installing crayola")
-        path = conn.modules.os.path.join(host.installs, "crayola")
+        path = conn.modules.os.path.join(host.installbase, "crayola")
         with gitrepo(conn, path, self.GIT_REPO, self.GIT_BRANCH, logger):
             sudo = [] if conn.modules.sys.platform == "win32" else ["sudo"]
             remote_run(conn, sudo + ["python", "setup.py", "install"], cwd = "crayola-report", logger = logger)
