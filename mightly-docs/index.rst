@@ -45,19 +45,68 @@ to be up and running on each host.
 
 Configuration
 -------------
-All tasks 
 
 Hosts
 ^^^^^
+Hosts are the underlying "workers" on which tasks are executed. They are easily created using the ``Host`` 
+class, e.g. ::
+
+    sdk32 = Host("sdk32", gitbase = "/home/buildserver/outputs", 
+        installbase = "/home/buildserver/installs")
+
+You need to specify the host name, where git repositories will be created (``gitbase``) and where artifacts
+would ultimately be installed (``installbase``). You can also specify the RPyC port to use (the default is
+``18861``).
+
+.. note:: An RPyC server is expected to be running on that host, bound to the specified port.
 
 Builders
 ^^^^^^^^
+Builders, or more specifically the ``GitBuilder`` class, check out a particular branch (or hash) of a 
+git repository on all given hosts and run a build script. Each builder is expected to know where its build 
+script is located and where the built artifacts are placed. The builder knows all this (part of the builder's 
+code), instead of it being supplied as configuration, as it get quite complex. For once, the build script 
+might require all sorts of environment variables that must be set externally.
+
+A simple builder might be configured like the following::
+
+	nite_task = NiteBuilder([openni_task], hosts = {
+	    sdk32 : [
+	        BuildPlatform("linux32", ["python", "ReleaseVersion.py", "x86"], 
+	        	output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
+	    ],
+	    sdk64 : [
+	        BuildPlatform("linux64", ["python", "ReleaseVersion.py", "x64"], 
+	        	output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
+	        BuildPlatform("arm", ["python", "ReleaseVersion.py", "Arm"], 
+	        	output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
+	    ],
+	})
+
+First come the builder's dependencies (other tasks, such as the ``nite_task``), followed by the hosts on which 
+it should build (a dictionary of ``host : list of BuildPlatform``). Each host can build a number of ``BuildPlatforms``,
+which specify the name of the platform, the command to run (and its parameters) and a glob-pattern which is used
+to collect the outputs.
+
+.. note:: 
+   When a builder is run, it executes in parallel on all hosts. Within each hosts, ``BuildPlatforms`` are
+   executed serially.
 
 CrayolaTester
 ^^^^^^^^^^^^^
 
+The ``CrayolaTester`` 
+
+
+
 Putting it all Together
 ^^^^^^^^^^^^^^^^^^^^^^^
+
+
+
+
+
+
 
 
 Running Mightly
