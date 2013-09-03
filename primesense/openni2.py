@@ -186,7 +186,7 @@ class PlaybackSupport(object):
 
     def seek(self, stream, frame_index):
         seek = c_api.OniSeek(frameIndex = frame_index, stream = stream._handle)
-        self.device.invoke(c_api.ONI_DEVICE_COMMAND_SEEK, ctypes.byref(seek))
+        self.device.invoke(c_api.ONI_DEVICE_COMMAND_SEEK, seek)
     def get_number_of_frames(self, stream):
         return stream.get_number_of_frames()
 
@@ -299,7 +299,7 @@ class Device(HandleObject):
         if size is None:
             size = ctypes.sizeof(data)
         c_api.oniDeviceInvoke(self._handle, command_id, ctypes.byref(data), size)
-		
+
     def is_command_supported(self, command_id):
         return bool(c_api.oniDeviceIsCommandSupported(self._handle, command_id))
 
