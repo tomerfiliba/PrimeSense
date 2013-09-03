@@ -2,42 +2,12 @@ import sys
 import threading
 import logging
 import subprocess
+import os
 from MimeWriter import MimeWriter
 from smtplib import SMTP
 from cStringIO import StringIO
-import os
 from contextlib import contextmanager
-from collections import OrderedDict
 
-
-class HtmlLogHandler(logging.Handler):
-    STYLES = {
-        "DEBUG" : ["background-color: white"],
-        "INFO" : ["background-color: rgba(0, 255, 0, 0.1)"],
-        "WARNING" : ["background-color: rgba(255, 255, 0, 0.1)"],
-        "ERROR" : ["background-color: rgba(255, 0, 0, 0.1)"],
-        "CRITICAL" : ["background-color: rgba(255, 0, 0, 0.4)"],
-    }
-    
-    def __init__(self):
-        logging.Handler.__init__(self)
-        self._records_by_logger = OrderedDict()
-    def emit(self, record):
-        if record.name not in self._records_by_logger:
-            self._records_by_logger[record.name] = []
-        
-        msg = self.format(record)
-        self._records_by_logger[record.name].append((record.levelname, msg))
-    def to_html(self):
-        for logger, records in self._records_by_logger.items():
-            succ = all(level in ("INFO", "DEBUG", "WARNING") for level, _ in records)
-            yield "<details style='display:block; background-color: rgba(255,100,100,0.1); margin-bottom: 20px;'>"
-            bgcolor = "rgba(0,255,0,0.3)" if succ else "rgba(255,0,0,0.3)"
-            yield "<summary style='display:block; padding: 10px; cursor:pointer; background-color:%s;'>%s</summary>" % (bgcolor, logger)
-            for level, msg in records:
-                yield "<pre style='%s; margin: 0;'>%s</pre>" % (";".join(self.STYLES.get(level, ())), 
-                    msg.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
-            yield "</details>"
 
 def parallelize(iterator, logger = None):
     if logger is None:

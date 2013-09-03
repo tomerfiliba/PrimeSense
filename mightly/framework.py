@@ -8,7 +8,8 @@ import shutil
 import sys
 import tempfile
 from functools import partial
-from mightly.lib import parallelize, remote_run, RemoteCommandError, sendmail, HtmlLogHandler, gitrepo
+from mightly.lib import parallelize, remote_run, RemoteCommandError, sendmail, gitrepo
+from mightly.report import Report
 
 
 class HostConnectError(Exception):
@@ -77,7 +78,7 @@ class Task(object):
     def __repr__(self):
         return self.__class__.__name__
     
-    def run(self, **params):
+    def run(self, report, **params):
         with self._lock:
             if self._state == self.NOT_RUN:
                 self._state = self.RUNNING
@@ -95,15 +96,16 @@ class Task(object):
         if self.deps:
             logger.info("%s: Satisfying dependencies...", self)
             for dep in self.deps:
-                dep.run(**self.params)
+                dep.run(report, **self.params)
         logger.info("Running %s", self)
-        self._run()
+        report2 = report.new_section(str(self))
+        self._run(report2)
         logger.info("**** %s is done ****", self)
         
         with self._lock:
             self._state = self.FINISHED
     
-    def _run(self):
+    def _run(self, report):
         raise NotImplementedError
 
 
@@ -121,7 +123,7 @@ class GitBuilder(Task):
     GIT_DIR = None
     ATTRS = {"hosts" : REQUIRED, "branch" : "develop", "force_build" : False}
     
-    def _run(self):
+    def _run(self, report):
         self.outputs = {}
         names = set()
         for host, targets in self.hosts.items():
@@ -132,7 +134,7 @@ class GitBuilder(Task):
                 names.add(target.name)
                 self.outputs[host][target.name] = None
         
-        parallelize((partial(self._build_on_host, host, targets) for host, targets in self.hosts.items()),
+        parallelize((partial(self._build_on_host, report, host, targets) for host, targets in self.hosts.items()),
             logger = logging.getLogger(self.__class__.__name__))
     
     @classmethod
@@ -149,52 +151,66 @@ class GitBuilder(Task):
         parallelize((partial(clean_host, host, targets) for host, targets in self.hosts.items()),
             logger = logging.getLogger(self.__class__.__name__))
     
-    def _build_on_host(self, host, targets):
+    def _build_on_host(self, report, host, targets):
         for target in targets:
+            #report2 = report.new_section()
             logger = logging.getLogger("%s %s/%s" % (self.__class__.__name__, host.hostname, target.name))
-            with host.connect() as conn:
-                conn._config["connid"] = host.hostname
-                logger.info("Building %s:%s on %r", self, target.name, host.hostname)
-                with self.gitrepo(conn, self.get_repo_root(host, conn, target), logger) as root:
-                    last_head_fn = conn.modules.os.path.join(root, ".git", "mighlty-last-head")
-                    head, _ = remote_run(conn, logger, ["git", "rev-parse", "HEAD"])
-                    head = head.strip()
-                    if not self.force_build:
-                        try:
-                            with conn.builtin.open(last_head_fn, "r") as f:
-                                last_head = f.read()
-                        except IOError:
-                            last_head = None
-                        logger.debug("HEAD is %s, last built HEAD is %s", head, last_head)
-                        output = [conn.modules.os.path.abspath(f)
-                            for f in conn.modules.glob.glob(conn.modules.os.path.join(root, target.output_pattern))]
-                        need_build = not output or head != last_head
-                    else:
-                        need_build = True
-                    
-                    if need_build:
-                        remote_run(conn, logger, ["git", "submodule", "update", "--init", "--recursive"])
-                        remote_run(conn, logger, ["git", "clean", "-fxd"])
-                        self._build(host, conn, target, logger)
-                        with conn.builtin.open(last_head_fn, "w") as f:
-                            f.write(head)
-                    
-                    if target.output_pattern:
-                        output = [conn.modules.os.path.abspath(f)
-                            for f in conn.modules.glob.glob(conn.modules.os.path.join(root, target.output_pattern))]
-                        if len(output) == 1:
-                            output = output[0]
-                        if not output:
-                            raise ValueError("No outputs found for %s %s (%s)" % (self, target.name, host.hostname))
-                        assert output
-                    else:
-                        output = None
-                    self.outputs[host][target.name] = output
-                    if need_build:
-                        logger.info("Built %r", output)
-                    else:
-                        logger.info("%r is up to date", output)
-                    #self._copy_outputs(conn, logger, output)
+            try:
+                with host.connect() as conn:
+                    conn._config["connid"] = host.hostname
+                    logger.info("Building %s:%s on %r", self, target.name, host.hostname)
+                    with self.gitrepo(conn, self.get_repo_root(host, conn, target), logger) as root:
+                        was_built = self._build_if_needed(host, conn, root, logger, target)
+                        self._collect_outputs(host, conn, root, logger, target, was_built)
+            except Exception as ex:
+                report.add_error("%s %s/%s - FAILED: %r", self.__class__.__name__, host.hostname, target.name, ex)
+                raise
+            else:
+                report.add_succ("%s %s/%s - SUCCESS", self.__class__.__name__, host.hostname, target.name)
+
+    def _build_if_needed(self, host, conn, root, logger, target):
+        last_head_fn = conn.modules.os.path.join(root, ".git", "mighlty-last-head")
+        head, _ = remote_run(conn, logger, ["git", "rev-parse", "HEAD"])
+        head = head.strip()
+        if not self.force_build:
+            try:
+                with conn.builtin.open(last_head_fn, "r") as f:
+                    last_head = f.read()
+            except IOError:
+                last_head = None
+            logger.debug("HEAD is %s, last built HEAD is %s", head, last_head)
+            output = [conn.modules.os.path.abspath(f)
+                for f in conn.modules.glob.glob(conn.modules.os.path.join(root, target.output_pattern))]
+            need_build = not output or head != last_head
+        else:
+            need_build = True
+        
+        if need_build:
+            remote_run(conn, logger, ["git", "submodule", "update", "--init", "--recursive"])
+            remote_run(conn, logger, ["git", "clean", "-fxd"])
+            logger.info("Building...")
+            self._build(host, conn, target, logger)
+            with conn.builtin.open(last_head_fn, "w") as f:
+                f.write(head)
+        
+        return need_build
+    
+    def _collect_outputs(self, host, conn, root, logger, target, was_built):
+        if target.output_pattern:
+            output = [conn.modules.os.path.abspath(f)
+                for f in conn.modules.glob.glob(conn.modules.os.path.join(root, target.output_pattern))]
+            if len(output) == 1:
+                output = output[0]
+            if not output:
+                raise ValueError("No outputs found for %s %s (%s)" % (self, target.name, host.hostname))
+            assert output
+        else:
+            output = None
+        self.outputs[host][target.name] = output
+        if was_built:
+            logger.info("Built %r", output)
+        else:
+            logger.info("%r is up to date", output)        
     
     def _build(self, host, conn, target, logger):
         raise NotImplementedError()
@@ -321,24 +337,32 @@ class CrayolaTester(Task):
     GIT_BRANCH = "crayola"
     ATTRS = {"hosts" : REQUIRED}
     
-    def _run(self):
-        parallelize((partial(self._run_on_host, host, targets) for host, targets in self.hosts.items()),
+    def _run(self, report):
+        parallelize((partial(self._run_on_host, report, host, targets) for host, targets in self.hosts.items()),
             logger = logging.getLogger(self.__class__.__name__))
     
-    def _run_on_host(self, host, targets):
+    def _run_on_host(self, report, host, targets):
         first_time = True
         for target_name in targets:
+            #report2 = report.new_section("Crayola %s/%s" % (host.hostname, target_name)) 
             logger = logging.getLogger("Crayola %s/%s" % (host.hostname, target_name))
             logger.info("Testing on %s", host.hostname)
-            with host.connect() as conn:
-                conn._config["connid"] = host.hostname
-                self._install_artifact(self.deps.openni_task, host, conn, target_name, logger)
-                self._install_artifact(self.deps.nite_task, host, conn, target_name, logger)
-                if first_time:
-                    # these need to be installed only once per host
-                    self._install_python_packages(host, conn, logger)
-                    self._upload_firmware(host, conn, logger)
-                self._run_crayola(host, conn, target_name, logger)
+            try:
+                with host.connect() as conn:
+                    conn._config["connid"] = host.hostname
+                    self._install_artifact(self.deps.openni_task, host, conn, target_name, logger)
+                    self._install_artifact(self.deps.nite_task, host, conn, target_name, logger)
+                    if first_time:
+                        # these need to be installed only once per host
+                        self._install_python_packages(host, conn, logger)
+                        self._upload_firmware(host, conn, logger)
+                    self._run_crayola(host, conn, target_name, logger)
+            except Exception as ex:
+                report.add_error("%s %s/%s - FAILED: %r", self.__class__.__name__, host.hostname, target_name, ex)
+                raise
+            else:
+                report.add_succ("%s %s/%s - SUCCESS", self.__class__.__name__, host.hostname, target_name)
+                
             first_time = False
     
     def _install_artifact(self, task, host, conn, target_name, logger):
@@ -423,7 +447,7 @@ class CrayolaTester(Task):
                     raise t, v, tb
 
 
-def mightly_run(tasks, to_addrs, mail_server = "ex2010", 
+def mightly_run(tasks, to_addrs = [], mail_server = "ex2010", 
         from_addr = "NightlyUpdate@primesense.com", destination_dir = r"G:\RnD\Software\Nightly_Builds", 
         exit = True):
     
@@ -435,16 +459,14 @@ def mightly_run(tasks, to_addrs, mail_server = "ex2010",
     fmt = logging.Formatter("%(asctime)s|%(thread)04d| %(name)-32s| %(message)s", datefmt = "%H:%M:%S")
     fh.setFormatter(fmt)
     fh.setLevel(logging.DEBUG)
-    hlh = HtmlLogHandler()
-    hlh.setFormatter(fmt)
-    hlh.setLevel(logging.INFO)
     sh = logging.StreamHandler(sys.stdout)
     sh.setFormatter(fmt)
     sh.setLevel(logging.INFO)
     logging.root.setLevel(logging.DEBUG)
     logging.root.addHandler(fh)
-    logging.root.addHandler(hlh)
     logging.root.addHandler(sh)
+    report = Report("Mightly Run")
+    report.add_text(time.asctime())
 
     if not isinstance(tasks, (tuple, list)):
         tasks = [tasks]
@@ -452,7 +474,7 @@ def mightly_run(tasks, to_addrs, mail_server = "ex2010",
     logger.info("===== Started %s =====", time.asctime())
     try:
         for task in tasks:
-            task.run(local_outputs_dir = local_outputs_dir)
+            task.run(report, local_outputs_dir = local_outputs_dir)
     except Exception:
         succ = False
         logger.error("FAILED!", exc_info = True)
@@ -460,19 +482,18 @@ def mightly_run(tasks, to_addrs, mail_server = "ex2010",
         succ = True
         logger.info("SUCCESS!")
     fh.flush()
-    body = u"<html><head><title>Nightly Report</title></head><body><h1>Night Report for %s</h1>\n" % (time.asctime(),)
     
     if os.path.exists(destination_dir):
         dst_dir = os.path.join(destination_dir, time.strftime("%Y.%m.%d-%H%M"))
         shutil.rmtree(dst_dir, ignore_errors = True)
         logger.info("Copying logs to %s", dst_dir)
         shutil.copytree(local_outputs_dir, dst_dir)
-        body += u"<div style='font-size:2em;'>Log dir: <a href='file:///%s'>%s</a></div>\n" % (
-            dst_dir.replace("\\", "/"), dst_dir)
-    
-    body += u"\n".join(hlh.to_html())
-    body += u"\n</body></html>\n"
-    with open(os.path.join(local_outputs_dir, "email.html"), "w") as f:
+        url = "file:///%s" % (dst_dir.replace("\\", "/"),)
+        report.elements.insert(2, ("font-size:2em;", (url, dst_dir)))
+
+    body = report.render()
+
+    with open(os.path.join(".", "email.html"), "w") as f:
         f.write(body)
     
     if to_addrs:
