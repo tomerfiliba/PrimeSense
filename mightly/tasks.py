@@ -87,8 +87,7 @@ crayola_task = CrayolaTester(Deps(
         fw_task = fw_eva_streams,
     ),
     hosts = {
-        # test the following targets on the given hosts, e.g., 
-        #      buildserver : ["win32", "win64"]
+        # test the following targets on the given hosts, e.g., ``buildserver : ["win32", "win64"]``
         buildserver : ["win64"],
         sdk64 : ["linux64"],
         sdk32 : ["linux32"],

@@ -108,7 +108,7 @@ the time of writing.
 
 Running Mightly
 ---------------
-After you finished configuring your scenario, all you need to do is call is ``run_and_send_emails``::
+After you finished configuring your scenario, all you need to do is call is ``mightly_run``::
 
     if __name__ == "__main__":
         mightly_run([root_task1, root_task2, ...],
