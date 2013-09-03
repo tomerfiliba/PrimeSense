@@ -18,18 +18,18 @@ softwaremac = Host("softwaremac", gitbase = "/Users/buildserver/outputs",
 # Builders
 #=======================================================================================================================
 openni_task = OpenNIBuilder(hosts = {
-    buildserver : [
-        Target("win32", ["python", "ReleaseVersion.py", "x86"], output_pattern = "Packaging/Final/*.msi"),
-        Target("win64", ["python", "ReleaseVersion.py", "x64"], output_pattern = "Packaging/Final/*.msi"),
-    ],
-    sdk32 : [
-        Target("linux32", ["python", "ReleaseVersion.py", "x86"], output_pattern = "Packaging/Final/*.tar.bz2"),
-    ],
+#     buildserver : [
+#         Target("win32", ["python", "ReleaseVersion.py", "x86"], output_pattern = "Packaging/Final/*.msi"),
+#         Target("win64", ["python", "ReleaseVersion.py", "x64"], output_pattern = "Packaging/Final/*.msi"),
+#     ],
+#     sdk32 : [
+#         Target("linux32", ["python", "ReleaseVersion.py", "x86"], output_pattern = "Packaging/Final/*.tar.bz2"),
+#     ],
     sdk64 : [
         Target("linux64", ["python", "ReleaseVersion.py", "x64"], output_pattern = "Packaging/Final/*.tar.bz2"),
-        Target("arm", ["python", "ReleaseVersion.py", "Arm"], output_pattern = "Packaging/Final/*.tar.bz2"),
-        Target("android", ["python", "ReleaseVersion.py", "android"], output_pattern = "Packaging/Final/*.tar"),
-        Target("src", ["python", "ReleaseOpenSource.py"], output_pattern = "Packaging/Final/*.tar.bz2"),
+#         Target("arm", ["python", "ReleaseVersion.py", "Arm"], output_pattern = "Packaging/Final/*.tar.bz2"),
+#         Target("android", ["python", "ReleaseVersion.py", "android"], output_pattern = "Packaging/Final/*.tar"),
+#         Target("src", ["python", "ReleaseOpenSource.py"], output_pattern = "Packaging/Final/*.tar.bz2"),
     ],
     softwaremac : [
         Target("osx", ["python", "ReleaseVersion.py", "x64"], output_pattern = "Packaging/Final/*.tar.bz2"),
@@ -37,16 +37,16 @@ openni_task = OpenNIBuilder(hosts = {
 })
 
 nite_task = NiteBuilder(Deps(openni_task = openni_task), hosts = {
-    buildserver : [
-        Target("win32", ["python", "ReleaseVersion.py", "x86"], output_pattern = "SDK/Packaging/Final/*.msi"),
-        Target("win64", ["python", "ReleaseVersion.py", "x64"], output_pattern = "SDK/Packaging/Final/*.msi"),
-    ],
-    sdk32 : [
-        Target("linux32", ["python", "ReleaseVersion.py", "x86"], output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
-    ],
+#     buildserver : [
+#         Target("win32", ["python", "ReleaseVersion.py", "x86"], output_pattern = "SDK/Packaging/Final/*.msi"),
+#         Target("win64", ["python", "ReleaseVersion.py", "x64"], output_pattern = "SDK/Packaging/Final/*.msi"),
+#     ],
+#     sdk32 : [
+#         Target("linux32", ["python", "ReleaseVersion.py", "x86"], output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
+#     ],
     sdk64 : [
         Target("linux64", ["python", "ReleaseVersion.py", "x64"], output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
-        Target("arm", ["python", "ReleaseVersion.py", "Arm"], output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
+#        Target("arm", ["python", "ReleaseVersion.py", "Arm"], output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
     ],
     softwaremac : [
         Target("osx", ["python", "ReleaseVersion.py", "x64"], output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
@@ -84,12 +84,12 @@ crayola_task = CrayolaTester(Deps(
         wrapper_task = wrapper_task, 
         openni_task = openni_task, 
         nite_task = nite_task, 
-        fw_task = fw_eva_streams,
+        #fw_task = fw_eva_streams,
     ),
     hosts = {
-        buildserver : ["win64"],
-        sdk64 : ["linux64"],
-        sdk32 : ["linux32"],
+        #buildserver : ["win64"],
+        #sdk64 : ["linux64"],
+        #sdk32 : ["linux32"],
         softwaremac : ["osx"],
     }
 )
@@ -97,9 +97,12 @@ crayola_task = CrayolaTester(Deps(
 
 if __name__ == "__main__":
     mightly_run(crayola_task,
-        to_addrs = ["eddie.cohen@primesense.com"],
+        to_addrs = [
+            #"tomerfiliba@gmail.com", 
+            #"eddie.cohen@primesense.com",
+        ],
         #force_build = True,
-        #copy_outputs = False,
+        copy_outputs = False,
     )
 
 

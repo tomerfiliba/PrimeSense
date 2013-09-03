@@ -420,11 +420,11 @@ class CrayolaTester(Task):
             self.deps.openni_task.update_env_vars(host, conn, target_name, env)
             self.deps.nite_task.update_env_vars(host, conn, target_name, env)
 
-            if sys.platform != "win32":
-                path = ["/usr/local/bin"]
-                if "PATH" in env:
-                    path.append(env["PATH"])
-                env["PATH"] = conn.os.modules.path.pathsep.join(path)
+#             if sys.platform != "win32":
+#                 path = ["/usr/local/bin"]
+#                 if "PATH" in env:
+#                     path.append(env["PATH"])
+#                 env["PATH"] = conn.os.modules.path.pathsep.join(path)
             
             logger.info("Running tests")
             try:

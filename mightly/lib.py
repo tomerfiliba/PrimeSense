@@ -58,8 +58,13 @@ class RemoteCommandError(Exception):
 def remote_run(conn, logger, args, cwd = None, allow_failure = False, env = None, sudo = False):
     if sudo and conn.modules.sys.platform != "win32":
         args.insert(0, "sudo")
-    proc = conn.modules.subprocess.Popen(tuple(args), cwd = cwd, env = env, 
-        stdin = subprocess.PIPE, stderr = subprocess.PIPE, stdout = subprocess.PIPE)
+    try:
+        proc = conn.modules.subprocess.Popen(tuple(args), cwd = cwd, env = env, 
+            stdin = subprocess.PIPE, stderr = subprocess.PIPE, stdout = subprocess.PIPE)
+    except Exception:
+        logger.error("Failed to run: args=%r cwd=%r env=%r", args, cwd, env, exc_info = True)
+        raise
+    
     logger.debug("Running %r (pid %d)", " ".join(args), proc.pid)
     out, err = proc.communicate()
     rc = proc.wait()
