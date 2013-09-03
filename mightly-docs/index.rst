@@ -10,7 +10,7 @@ function that checked if it were building ``OPENNI2`` on ``WIN32`` and set vario
 
 The lesson to be learned here is, such projects are too complex to "real configuration", forcing you to 
 augment the configuration with code. And if this is the case, why bother maintaining 4 different XMLs and
-countless lines of code for processing them? Let's just use code -- but declaratively!
+countless lines of code for "parsing" them? Let's just use code -- but let's make it declarative.
 
 Goals
 -----
@@ -72,24 +72,24 @@ A simple builder might be configured like the following::
 
 	nite_task = NiteBuilder(Deps(openni_task = openni_task), hosts = {
 	    sdk32 : [
-	        BuildPlatform("linux32", ["python", "ReleaseVersion.py", "x86"], 
+	        Target("linux32", ["python", "ReleaseVersion.py", "x86"], 
 	        	output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
 	    ],
 	    sdk64 : [
-	        BuildPlatform("linux64", ["python", "ReleaseVersion.py", "x64"], 
+	        Target("linux64", ["python", "ReleaseVersion.py", "x64"], 
 	        	output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
-	        BuildPlatform("arm", ["python", "ReleaseVersion.py", "Arm"], 
+	        Target("arm", ["python", "ReleaseVersion.py", "Arm"], 
 	        	output_pattern = "SDK/Packaging/Final/*.tar.bz2"),
 	    ],
 	})
 
 First come the builder's dependencies (other tasks, such as the ``nite_task``), followed by the hosts on which 
-it should build (a dictionary of ``host : list of BuildPlatform``). Each host can build a number of ``BuildPlatforms``,
-which specify the name of the platform, the command to run (and its parameters) and a glob-pattern which is used
-to collect the outputs.
+it should build (a dictionary of ``host : list of Targets``). Each host can build a number of ``Targets``,
+which consist of a name, the command to run (and its arguments) and a glob-pattern that's used to collect the 
+artifacts.
 
 .. note:: 
-   * When a builder is run, it executes in parallel on all hosts. Within each hosts, ``BuildPlatforms`` are
+   * When a builder is run, it executes in parallel on all hosts. Within each host, ``Targets`` are
      executed serially.
    * Builders remember the last git hash they've built and will skip building if the hash is the same and the 
      outputs exist (unless ``force_build = True``)
@@ -98,18 +98,12 @@ to collect the outputs.
 CrayolaTester
 ^^^^^^^^^^^^^
 
-The ``CrayolaTester`` 
+The ``CrayolaTester`` task depends on OpenNI, NiTE, the firmware and the wrapper builders, and takes care of 
+orchestrating the show. It runs in parallel on each of its host, installs OpenNI and NiTE, as well as the the
+Python wrapper and its dependencies and runs the tests (using ``nose``).
 
-
-
-Putting it all Together
-^^^^^^^^^^^^^^^^^^^^^^^
-
-
-
-
-
-
+In the future it should also be able to upload the firmware onto the device, but this is not implemented at 
+the time of writing.
 
 
 Running Mightly
@@ -117,7 +111,7 @@ Running Mightly
 After you finished configuring your scenario, all you need to do is call is ``run_and_send_emails``::
 
     if __name__ == "__main__":
-        run_and_send_emails([root_task1, root_task2, ...],
+        mightly_run([root_task1, root_task2, ...],
             to_addrs = ["my.email@primesense.com", "your.email@primesense.com"],
         )
 
@@ -125,7 +119,7 @@ This function will take care of running each task (including its dependencies), 
 configurable directory (``G:\RnD\Software\Nightly_Builds`` by default), and sending an email report
 to the given addresses.
 
-By default the function will exit the process with an exit code of 0 upon success and 1 otherwise. You can
-prevent this by passing ``exit = False``.
+The function will exit the process with an exit code of 0 upon success and 1 otherwise (you can prevent this 
+by passing ``exit = False``).
 
 

@@ -208,9 +208,9 @@ class GitBuilder(Task):
             output = None
         self.outputs[host][target.name] = output
         if was_built:
-            logger.info("Built %r", output)
+            logger.info("Built %s", output)
         else:
-            logger.info("%r is up to date", output)
+            logger.info("%s is up to date", output)
         if self.params.get("copy_outputs", False):
             self._copy_outputs(conn, logger, output)
     
@@ -233,7 +233,7 @@ class GitBuilder(Task):
 
         for fn in outputs:
             logger.info("Downloading %s to %s", fn, dst)
-            rpyc.classic.download(conn, fn, os.path.join(dst, os.path.basename(fn)))
+            rpyc.classic.download(conn, fn, os.path.join(dst, os.path.basename(fn)), chunk_size = 64*1024)
 
 
 class OpenNIBuilder(GitBuilder):
@@ -419,12 +419,6 @@ class CrayolaTester(Task):
             env = conn.modules.os.environ.copy()
             self.deps.openni_task.update_env_vars(host, conn, target_name, env)
             self.deps.nite_task.update_env_vars(host, conn, target_name, env)
-
-#             if sys.platform != "win32":
-#                 path = ["/usr/local/bin"]
-#                 if "PATH" in env:
-#                     path.append(env["PATH"])
-#                 env["PATH"] = conn.os.modules.path.pathsep.join(path)
             
             logger.info("Running tests")
             try:
@@ -470,6 +464,14 @@ def mightly_run(tasks, to_addrs = [], mail_server = "ex2010",
     report = Report("Mightly Run")
     report.add_text(time.asctime())
 
+    if os.path.exists(destination_dir):
+        dst_dir = os.path.join(destination_dir, time.strftime("%Y.%m.%d-%H%M"))
+        shutil.rmtree(dst_dir, ignore_errors = True)
+        url = "file:///%s" % (dst_dir.replace("\\", "/"),)
+        report.add_link(url, dst_dir, style = "font-size:2em;")
+    else:
+        dst_dir = None
+
     if not isinstance(tasks, (tuple, list)):
         tasks = [tasks]
     logger = logging.getLogger("Mightly")
@@ -485,23 +487,17 @@ def mightly_run(tasks, to_addrs = [], mail_server = "ex2010",
         succ = True
         logger.info("SUCCESS!")
     fh.flush()
-    
-    if os.path.exists(destination_dir):
-        dst_dir = os.path.join(destination_dir, time.strftime("%Y.%m.%d-%H%M"))
-        shutil.rmtree(dst_dir, ignore_errors = True)
-        logger.info("Copying logs to %s", dst_dir)
-        shutil.copytree(local_outputs_dir, dst_dir)
-        url = "file:///%s" % (dst_dir.replace("\\", "/"),)
-        report.elements.insert(1, ("font-size:2em;", (url, dst_dir)))
 
     body = report.render()
-
-    with open(os.path.join(".", "email.html"), "w") as f:
+    with open(os.path.join(local_outputs_dir, "email.html"), "w") as f:
         f.write(body)
     
+    if dst_dir:
+        logger.info("Copying outputs to %s", dst_dir)
+        shutil.copytree(local_outputs_dir, dst_dir)
+    
     if to_addrs:
-        sendmail(mail_server, from_addr, to_addrs, "Nightly passed :-)" if succ else "Nightly failed :-(", 
-            body)
+        sendmail(mail_server, from_addr, to_addrs, "Nightly passed :-)" if succ else "Nightly failed :-(", body)
     
     if exit:
         sys.exit(0 if succ else 1)

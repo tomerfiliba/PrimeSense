@@ -32,7 +32,7 @@ class Report(object):
                         style, text = elem
                         if isinstance(text, tuple):
                             url, name = text
-                            doc.a(name, href=url)
+                            doc.a(name, href=url, style=style)
                         else:
                             doc.p(text, style=style)
 
