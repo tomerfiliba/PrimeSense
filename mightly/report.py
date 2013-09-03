@@ -22,18 +22,19 @@ class Report(object):
         self.elements.append((style, (url, name)))
 
     def _render(self, doc):
-        with doc.div(style = "padding-left:%dpx;" % ((self.level-1 * 50),)):
+        with doc.div():
             doc.inline_subelem("h%d" % (self.level,), self.title)
-            for elem in self.elements:
-                if isinstance(elem, Report):
-                    elem._render(doc)
-                else:
-                    style, text = elem
-                    if isinstance(text, tuple):
-                        url, name = text
-                        doc.a(name, href=url)
+            with doc.div(style="padding-left: 50px;"):
+                for elem in self.elements:
+                    if isinstance(elem, Report):
+                        elem._render(doc)
                     else:
-                        doc.p(text, style=style)
+                        style, text = elem
+                        if isinstance(text, tuple):
+                            url, name = text
+                            doc.a(name, href=url)
+                        else:
+                            doc.p(text, style=style)
 
     def render(self):
         doc = HtmlDocument()

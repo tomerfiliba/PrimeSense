@@ -121,7 +121,7 @@ class Target(object):
 class GitBuilder(Task):
     GIT_REPO = None
     GIT_DIR = None
-    ATTRS = {"hosts" : REQUIRED, "branch" : "develop", "force_build" : False}
+    ATTRS = {"hosts" : REQUIRED, "branch" : "develop"}
     
     def _run(self, report):
         self.outputs = {}
@@ -172,7 +172,7 @@ class GitBuilder(Task):
         last_head_fn = conn.modules.os.path.join(root, ".git", "mighlty-last-head")
         head, _ = remote_run(conn, logger, ["git", "rev-parse", "HEAD"])
         head = head.strip()
-        if not self.force_build:
+        if not self.params.get("force_build", False):
             try:
                 with conn.builtin.open(last_head_fn, "r") as f:
                     last_head = f.read()
@@ -210,7 +210,9 @@ class GitBuilder(Task):
         if was_built:
             logger.info("Built %r", output)
         else:
-            logger.info("%r is up to date", output)        
+            logger.info("%r is up to date", output)
+        if self.params.get("copy_outputs", False):
+            self._copy_outputs(conn, logger, output)
     
     def _build(self, host, conn, target, logger):
         raise NotImplementedError()
@@ -426,7 +428,7 @@ class CrayolaTester(Task):
             
             logger.info("Running tests")
             try:
-                out, err = remote_run(conn, logger, ["nosetests", "-vv", "-d", "--with-crayola-report"],
+                out, err = remote_run(conn, logger, ["nosetests", "-d", "--with-crayola-report"],
                     cwd = "tests", env = env)
                 if out.strip():
                     logger.debug(out)
@@ -449,7 +451,7 @@ class CrayolaTester(Task):
 
 def mightly_run(tasks, to_addrs = [], mail_server = "ex2010", 
         from_addr = "NightlyUpdate@primesense.com", destination_dir = r"G:\RnD\Software\Nightly_Builds", 
-        exit = True):
+        exit = True, force_build = False, copy_outputs = True):
     
     local_outputs_dir = os.path.join(tempfile.gettempdir(), "mightly-logs")
     shutil.rmtree(local_outputs_dir, ignore_errors = True)
@@ -474,7 +476,8 @@ def mightly_run(tasks, to_addrs = [], mail_server = "ex2010",
     logger.info("===== Started %s =====", time.asctime())
     try:
         for task in tasks:
-            task.run(report, local_outputs_dir = local_outputs_dir)
+            task.run(report, force_build = force_build, copy_outputs = copy_outputs,
+                local_outputs_dir = local_outputs_dir)
     except Exception:
         succ = False
         logger.error("FAILED!", exc_info = True)
@@ -489,7 +492,7 @@ def mightly_run(tasks, to_addrs = [], mail_server = "ex2010",
         logger.info("Copying logs to %s", dst_dir)
         shutil.copytree(local_outputs_dir, dst_dir)
         url = "file:///%s" % (dst_dir.replace("\\", "/"),)
-        report.elements.insert(2, ("font-size:2em;", (url, dst_dir)))
+        report.elements.insert(1, ("font-size:2em;", (url, dst_dir)))
 
     body = report.render()
 

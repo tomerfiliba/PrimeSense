@@ -1,11 +1,8 @@
-
-from crayola import CrayolaTestBase
-from primesense import openni2, _openni2
-import time
-from primesense.openni2 import wait_for_any_stream, VideoMode
-import os
 import glob
 import copy
+from crayola import CrayolaTestBase
+from primesense import openni2
+from primesense.openni2 import wait_for_any_stream
 
 class TestRecording(CrayolaTestBase):
     
@@ -77,13 +74,12 @@ class TestRecording(CrayolaTestBase):
         CrayolaTestBase.setUp(self)
         permutations = self.get_all_permutations()
         CrayolaTestBase.tearDown(self)
-        i = 0
         for perm in permutations:
             if perm[2].resolutionY == 720:
                 pass
             else:
-                yield TestRecord._record_to_file, perm[0], perm[1], perm [2], True
-                yield TestRecord._record_to_file, perm[0], perm[1], perm [2], False
+                yield self._record_to_file, perm[0], perm[1], perm [2], True
+                yield self._record_to_file, perm[0], perm[1], perm [2], False
         
     def test_open_old_file(self):
         #CrayolaTestBase.setUp(self)
